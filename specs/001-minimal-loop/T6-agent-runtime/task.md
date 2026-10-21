@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T6
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T2、T3、T4、T5
 - **下游**：T7
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供后续实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T6 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T6 `spec.md`，确认状态机、种子规则、证据转换、确认门槛、停止条件。
@@ -56,27 +56,27 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/diagnosis/__init__.py`
-- [ ] `src/tracemind/diagnosis/state.py`
-- [ ] `src/tracemind/diagnosis/budget.py`
-- [ ] `src/tracemind/diagnosis/evidence.py`
-- [ ] `src/tracemind/diagnosis/evaluator.py`
-- [ ] `src/tracemind/diagnosis/runtime.py`
-- [ ] `tests/unit/test_runtime_state.py`
-- [ ] `tests/unit/test_runtime_budget.py`
-- [ ] `tests/unit/test_runtime_seed.py`
-- [ ] `tests/unit/test_evaluator.py`
-- [ ] `tests/integration/test_minimal_loop_runtime.py`
+- [x] `src/tracemind/diagnosis/__init__.py`
+- [x] `src/tracemind/diagnosis/state.py`
+- [x] `src/tracemind/diagnosis/budget.py`
+- [x] `src/tracemind/diagnosis/evidence.py`
+- [x] `src/tracemind/diagnosis/evaluator.py`
+- [x] `src/tracemind/diagnosis/runtime.py`
+- [x] `tests/unit/test_runtime_state.py`
+- [x] `tests/unit/test_runtime_budget.py`
+- [x] `tests/unit/test_runtime_seed.py`
+- [x] `tests/unit/test_evaluator.py`
+- [x] `tests/integration/test_minimal_loop_runtime.py`
 
 ## 3. Definition of Done
 
-- [ ] T6 spec 的 AC-T6-01 至 AC-T6-11 全部满足。
-- [ ] Happy path 得到 confirmed 假设和三类证据。
-- [ ] 无源码/空计划/预算/重复/provider 错误路径都有明确终态与 stop_reason。
-- [ ] LLM 不能直接确认假设；确认由 Evaluator 决定。
-- [ ] 所有工具调用经过 T4 ToolExecutor。
-- [ ] `RunResult` 可直接被 T7 生成报告。
-- [ ] 没有网络依赖；Mock 脚本确定性。
+- [x] T6 spec 的 AC-T6-01 至 AC-T6-11 全部满足。
+- [x] Happy path 得到 confirmed 假设和三类证据。
+- [x] 无源码/空计划/预算/重复/provider 错误路径都有明确终态与 stop_reason。
+- [x] LLM 不能直接确认假设；确认由 Evaluator 决定。
+- [x] 所有工具调用经过 T4 ToolExecutor。
+- [x] `RunResult` 可直接被 T7 生成报告。
+- [x] 没有网络依赖；Mock 脚本确定性。
 
 ## 4. 验证命令
 
@@ -100,4 +100,9 @@ uv run pytest tests/unit/test_runtime_state.py tests/unit/test_runtime_budget.py
 
 | 日期 | 执行人 | 命令 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 当前阶段只生成文档 |
+| 2026-10-21 | Claude | T6 专项 pytest | 17 passed | state/budget/evaluator/seed/integration |
+| 2026-10-21 | Claude | `uv run pytest -q` | 96 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 32 source files | — |
+| 2026-10-21 | Claude | Happy path | confirmed + 三类证据 | stop=evidence_sufficient |
+| 2026-10-21 | Claude | 异常路径 | 无源码/空计划/预算/重复/Provider 错误 | 终态与 stop_reason 明确 |

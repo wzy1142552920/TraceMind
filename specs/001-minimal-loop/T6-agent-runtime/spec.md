@@ -1,7 +1,7 @@
 # T6 — Agent Runtime、Evidence、Evaluator Spec
 
 - **任务 ID**：T6
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T2、T3、T4、T5
 - **下游**：T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -255,8 +255,20 @@ uv run pytest tests/unit/test_runtime_state.py tests/unit/test_runtime_budget.py
   tests/integration/test_minimal_loop_runtime.py -q
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令 | 结果 |
+|---|---|---|
+| 2026-10-21 | T6 专项 `pytest`（state/budget/evaluator/seed/integration） | 17 passed |
+| 2026-10-21 | `uv run pytest -q` | 96 passed |
+| 2026-10-21 | `uv run ruff check .` | All checks passed |
+| 2026-10-21 | `uv run mypy src` | Success: no issues found in 32 source files |
+| 2026-10-21 | Happy path | Mock 脚本产生 confirmed 假设；证据含 stack_frame/log_event/source_code；stop=evidence_sufficient |
+| 2026-10-21 | 异常路径 | 无 in-project frame/空计划/预算/重复调用/Provider 错误均得到明确终态与 stop_reason |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T6 spec；定义最小状态机、种子证据、确认门槛、预算和停止条件 |
+| 2026-10-21 | T6 实现完成；确定性 runtime、预算/事件、种子证据、Evaluator、集成测试落地 |
