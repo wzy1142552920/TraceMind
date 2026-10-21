@@ -1,7 +1,7 @@
 # T5 — Opt-in Live Verification Spec
 
 - **任务 ID**：T5
-- **状态**：draft
+- **状态**：implemented（live verification BLOCKED：无 Key）
 - **依赖**：T1–T4
 - **下游**：T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -111,8 +111,19 @@ uv run pytest -q   # live skipped
 TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令/检查 | 结果 |
+|---|---|---|
+| 2026-10-21 | 默认 `uv run pytest -q` | 145 passed；2 live skipped |
+| 2026-10-21 | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` | 2 skipped（无 Key）；145 deselected；无网络 |
+| 2026-10-21 | `ruff check .` / `mypy src` | 通过；36 个源文件 |
+| 2026-10-21 | live adapter/CLI | **BLOCKED**：当前无 `DEEPSEEK_API_KEY` |
+| 2026-10-21 | gate | `--run-live` + env flag + Key 三重条件生效 |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T5 spec；定义 live marker/gate、adapter/CLI live 测试和 BLOCKED 规则 |
+| 2026-10-21 | T5 实现完成；默认 skip/gate/skip 行为验证；真实 live 待 Key 后运行 |

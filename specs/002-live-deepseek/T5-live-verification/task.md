@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T5
-- **状态**：draft
+- **状态**：implemented（live BLOCKED：无 Key）
 - **依赖**：T1–T4
 - **下游**：T6
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T5 已实现；真实 live 仍 BLOCKED（当前无 Key）。以下步骤保留作为复现指南。
 
 1. **确认 spec**
    - 阅读 T5 spec、T1 `.env` loader、T4 repair、T3 usage。
@@ -39,20 +39,20 @@
 
 ## 2. 交付物
 
-- [ ] `pyproject.toml` live marker
-- [ ] `tests/conftest.py` `--run-live`/gate
-- [ ] `tests/live/test_live_deepseek.py`
-- [ ] gate 测试
-- [ ] 验收文档 live 状态
+- [x] `pyproject.toml` live marker
+- [x] `tests/conftest.py` `--run-live`/gate
+- [x] `tests/live/test_live_deepseek.py`
+- [x] gate 测试
+- [x] 验收文档 live 状态
 
 ## 3. Definition of Done
 
-- [ ] AC-T5-01 至 AC-T5-05 满足；无 Key 的 AC 为 BLOCKED。
-- [ ] 默认 pytest 不访问网络。
-- [ ] live gate 三重条件有效。
-- [ ] live adapter/CLI 断言结构/证据/报告/usage。
-- [ ] 产物无 Key/`sk-`。
-- [ ] 失败/跳过输出清晰，不伪造 PASS。
+- [x] AC-T5-01 至 AC-T5-05 满足；无 Key 的 AC 为 BLOCKED。
+- [x] 默认 pytest 不访问网络。
+- [x] live gate 三重条件有效。
+- [x] live adapter/CLI 断言结构/证据/报告/usage。
+- [x] 产物无 Key/`sk-`。
+- [x] 失败/跳过输出清晰，不伪造 PASS。
 
 ## 4. 验证命令
 
@@ -73,4 +73,8 @@ TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 文档阶段；当前无 Key |
+| 2026-10-21 | Claude | `uv run pytest -q` | 145 passed；2 skipped | live 默认 skip |
+| 2026-10-21 | Claude | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` | 2 skipped；145 deselected | 无 Key；无网络 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 36 source files | — |
+| 2026-10-21 | Claude | live adapter/CLI | BLOCKED | 当前无 `DEEPSEEK_API_KEY` |

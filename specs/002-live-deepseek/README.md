@@ -1,6 +1,6 @@
 # TraceMind v0.2 — 真实 DeepSeek Live 集成 SDD
 
-- **状态**：implementation in progress（T1–T4 implemented；T5–T6 pending）
+- **状态**：implementation in progress（T1–T5 implemented；T5 live BLOCKED；T6 pending）
 - **父设计**：[TraceMind v2.0](../../docs/TraceMind_Agent_System_Design_v2.md)
 - **v0.1 基线**：[v0.1 SDD](../001-minimal-loop/README.md)
 - **目标**：让 `--provider deepseek` 真实完成现有最小诊断循环，并补齐配置、`.env`、重试、usage/latency、计划修复和 opt-in live 验收
@@ -33,7 +33,7 @@ v0.2 不扩展平台，只把 v0.1 的 live 路径做扎实：
 | T2 | DeepSeek transport hardening | T1 | implemented | [spec](./T2-transport-hardening/spec.md) | [task](./T2-transport-hardening/task.md) |
 | T3 | LLM usage / latency / provenance | T1、T2 | implemented | [spec](./T3-usage-observability/spec.md) | [task](./T3-usage-observability/task.md) |
 | T4 | Live-plan resilience | T2、T3 | implemented | [spec](./T4-live-plan-resilience/spec.md) | [task](./T4-live-plan-resilience/task.md) |
-| T5 | Opt-in live verification | T1–T4 | draft | [spec](./T5-live-verification/spec.md) | [task](./T5-live-verification/task.md) |
+| T5 | Opt-in live verification | T1–T4 | implemented（live BLOCKED） | [spec](./T5-live-verification/spec.md) | [task](./T5-live-verification/task.md) |
 | T6 | 文档、验收与发布 | T1–T5 | draft | [spec](./T6-docs-release/spec.md) | [task](./T6-docs-release/task.md) |
 
 执行顺序：`T1 -> T2 -> T3 -> T4 -> T5 -> T6`。T3/T4 都改 runtime，串行实施。
@@ -88,7 +88,7 @@ CLI 参数 > 真实环境变量 > 项目根 .env > 默认值
 
 详细矩阵：[ACCEPTANCE.md](./ACCEPTANCE.md)。
 
-T1–T4 AC 已通过并回填；T5–T6 仍为 `PLANNED`。live AC 在真实 Key 运行前为 `BLOCKED (no DEEPSEEK_API_KEY)`。
+T1–T4 AC 已通过并回填；T5 实现完成，但 live AC 仍为 `BLOCKED (no DEEPSEEK_API_KEY)`；T6 待完成。
 
 ## 5. 复用与不做重写
 

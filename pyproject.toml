@@ -37,6 +37,9 @@ include = ["src/tracemind/diagnosis/templates/*.j2"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+    "live: requires network and DEEPSEEK_API_KEY",
+]
 
 [tool.ruff]
 target-version = "py312"

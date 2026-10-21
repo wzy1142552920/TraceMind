@@ -1,7 +1,7 @@
 # TraceMind v0.2 验收矩阵
 
 - **日期**：2026-10-21
-- **状态**：IN PROGRESS（T1–T4 已实现；T5–T6 planned）
+- **状态**：IN PROGRESS（T1–T5 已实现；T5 live BLOCKED；T6 planned）
 - **范围**：T1–T6
 - **AC 总数**：40
 - **Live 状态**：规划时未配置 `DEEPSEEK_API_KEY`；live AC 在真实运行前标记 **BLOCKED**，不得标记 PASS
@@ -62,11 +62,11 @@
 
 | AC | 验收标准 | 计划验证 | 状态 |
 |---|---|---|---|
-| AC-T5-01 | 默认 `pytest` 跳过 live，不访问网络 | `uv run pytest -q`；live marker skip | PLANNED |
-| AC-T5-02 | 仅 `--run-live + TRACEMIND_LIVE_TESTS=1 + Key` 运行 live | `tests/conftest.py` gate tests | PLANNED |
-| AC-T5-03 | live adapter 返回 canonical tool call + usage | `tests/live/test_live_deepseek.py::test_live_adapter` | BLOCKED (no key) |
-| AC-T5-04 | live CLI fixture 生成 5 产物、schema 0.2、三类证据、usage，无 secret | `test_live_cli_fixture` | BLOCKED (no key) |
-| AC-T5-05 | 无 Key 时 live AC 明确 BLOCKED，不写 PASS | 测试 skip 输出 + 验收文档 | PLANNED |
+| AC-T5-01 | 默认 `pytest` 跳过 live，不访问网络 | `uv run pytest -q`；145 passed, 2 skipped | PASS |
+| AC-T5-02 | 仅 `--run-live + TRACEMIND_LIVE_TESTS=1 + Key` 运行 live | `tests/conftest.py` gate；无 Key 时 2 skipped | PASS |
+| AC-T5-03 | live adapter 返回 canonical tool call + usage | `tests/live/test_live_deepseek.py::test_live_adapter_returns_usage` | BLOCKED (no key) |
+| AC-T5-04 | live CLI fixture 生成 5 产物、schema 0.2、三类证据、usage，无 secret | `test_live_cli_completes_fixture` | BLOCKED (no key) |
+| AC-T5-05 | 无 Key 时 live AC 明确 BLOCKED，不写 PASS | skip 输出 + 验收文档 | PASS |
 
 ## 6. T6 — Docs / release
 

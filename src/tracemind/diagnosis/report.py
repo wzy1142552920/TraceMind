@@ -127,11 +127,12 @@ def build_report(
     """Build and validate a report from one runtime result."""
     status = report_status(result)
     evidence_by_id = {item.evidence_id: item for item in result.evidence}
-    sources: dict[str, ReportSource] = {}
+    sources: dict[tuple[str, str], ReportSource] = {}
 
     for item in result.evidence:
+        key = (item.source_ref, item.kind)
         sources.setdefault(
-            item.source_ref,
+            key,
             ReportSource(
                 source_ref=item.source_ref,
                 kind=item.kind,
