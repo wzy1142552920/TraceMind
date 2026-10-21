@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T2
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T3、T4、T6
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供后续实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T2 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T2 `spec.md`，确认日志头格式、堆栈规则、primary event 规则、fixture 内容。
@@ -50,22 +50,22 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/core/models.py`（StackFrame/ExceptionCause/LogEvent/ParsedLog）
-- [ ] `src/tracemind/core/errors.py`（LogParseError）
-- [ ] `src/tracemind/log_analysis/parser.py`
-- [ ] `src/tracemind/log_analysis/stacktrace.py`
-- [ ] `src/tracemind/log_analysis/__init__.py`
-- [ ] `fixtures/logs/basic/incident.log`
-- [ ] `tests/unit/test_log_parser.py`
-- [ ] `tests/unit/test_stacktrace.py`
+- [x] `src/tracemind/core/models.py`（StackFrame/ExceptionCause/LogEvent/ParsedLog）
+- [x] `src/tracemind/core/errors.py`（LogParseError）
+- [x] `src/tracemind/log_analysis/parser.py`
+- [x] `src/tracemind/log_analysis/stacktrace.py`
+- [x] `src/tracemind/log_analysis/__init__.py`
+- [x] `fixtures/logs/basic/incident.log`
+- [x] `tests/unit/test_log_parser.py`
+- [x] `tests/unit/test_stacktrace.py`
 
 ## 3. Definition of Done
 
-- [ ] T2 spec 的 AC-T2-01 至 AC-T2-08 全部满足。
-- [ ] fixture 解析结果可被 T3/T4/T6 直接消费，无需二次清洗。
-- [ ] 未知行/空文件/截断堆栈不崩溃。
-- [ ] `LogEvent`/`ParsedLog` 可 `model_dump_json()`。
-- [ ] 没有引入 LLM/网络/额外依赖。
+- [x] T2 spec 的 AC-T2-01 至 AC-T2-08 全部满足。
+- [x] fixture 解析结果可被 T3/T4/T6 直接消费，无需二次清洗。
+- [x] 未知行/空文件/截断堆栈不崩溃。
+- [x] `LogEvent`/`ParsedLog` 可 `model_dump_json()`。
+- [x] 没有引入 LLM/网络/额外依赖。
 
 ## 4. 验证命令
 
@@ -85,4 +85,7 @@ uv run pytest tests/unit/test_log_parser.py tests/unit/test_stacktrace.py -q
 
 | 日期 | 执行人 | 命令 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 当前阶段只生成文档 |
+| 2026-10-21 | Claude | `uv run pytest tests/unit/test_log_parser.py tests/unit/test_stacktrace.py -q` | 18 passed | T2 专项 |
+| 2026-10-21 | Claude | `uv run pytest -q` | 32 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 16 source files | — |

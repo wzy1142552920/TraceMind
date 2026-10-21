@@ -1,7 +1,7 @@
 # T2 — 领域模型与日志解析 Spec
 
 - **任务 ID**：T2
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T3、T4、T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -180,8 +180,18 @@ Caused by: org.springframework.dao.DataAccessException: mapper update failed
 uv run pytest tests/unit/test_log_parser.py tests/unit/test_stacktrace.py -q
 ```
 
-## 11. 变更记录
+## 11. 实现验证结果
+
+| 日期 | 命令 | 结果 |
+|---|---|---|
+| 2026-10-21 | `uv run pytest tests/unit/test_log_parser.py tests/unit/test_stacktrace.py -q` | 18 passed |
+| 2026-10-21 | `uv run pytest -q` | 32 passed |
+| 2026-10-21 | `uv run ruff check .` | All checks passed |
+| 2026-10-21 | `uv run mypy src` | Success: no issues found in 16 source files |
+
+## 12. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T2 spec；定义日志/堆栈解析契约、fixture 和验收标准 |
+| 2026-10-21 | T2 实现完成；模型/解析器/fixture/测试落地，所有验收命令通过 |
