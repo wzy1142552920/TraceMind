@@ -219,10 +219,16 @@ def diagnose(
             f"[yellow]index warnings: {len(index_stats.errors)} file(s)[/yellow]"
         )
 
+    repair_attempts = (
+        settings.repair_attempts
+        if settings is not None
+        else (max_repair_attempts if max_repair_attempts is not None else 2)
+    )
     runtime = DiagnosisRuntime(
         repo_root=repo,
         provider_name=provider_name,
         model=model_label,
+        repair_attempts=repair_attempts,
     )
     try:
         result = runtime.run(

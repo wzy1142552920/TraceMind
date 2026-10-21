@@ -98,10 +98,13 @@ def test_empty_plan_stops_with_no_progress() -> None:
 
     assert result.state is RuntimeState.INSUFFICIENT_DATA
     assert result.stop_reason is StopReason.NO_PROGRESS
-    assert result.budget_usage["llm_calls"] == 1
+    assert result.budget_usage["llm_calls"] == 3
     assert result.budget_usage["tool_calls"] == 0
     assert result.hypotheses[0].status == "supported"
     assert result.hypotheses[0].missing_evidence == ["source_code"]
+    assert sum(
+        1 for event in result.events if event.event_type == "agent.repair"
+    ) == 2
 
 
 class AlwaysToolProvider:

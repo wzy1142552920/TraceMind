@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -26,7 +27,7 @@ from tracemind.diagnosis.state import (
     validate_transition,
 )
 from tracemind.indexing.java_index import JavaIndex, SourceMatch
-from tracemind.llm.messages import Message, ToolDefinition
+from tracemind.llm.messages import Message, ToolCall, ToolDefinition
 from tracemind.llm.provider import LLMProvider, LLMProviderError
 from tracemind.tools.builtin import build_default_registry
 from tracemind.tools.contracts import ToolContext, ToolRequest, ToolResult
@@ -58,11 +59,13 @@ class DiagnosisRuntime:
         repo_root: Path | None = None,
         provider_name: str = "unknown",
         model: str = "unknown",
+        repair_attempts: int = 2,
     ) -> None:
         self._tool_registry = tool_registry or build_default_registry()
         self._repo_root = repo_root
         self._provider_name = provider_name
         self._model = model
+        self._repair_attempts = repair_attempts
 
     def run(
         self,
@@ -84,6 +87,12 @@ class DiagnosisRuntime:
         current_state = RuntimeState.INGESTING
         evidence_counter = 0
         hypothesis_id = "hyp_001"
+        repair_attempts_used = 0
+        last_round_observed = False
+        last_assistant_text = ""
+        last_tool_observations: list[str] = []
+        last_new_evidence = 0
+        last_repair_reason = ""
 
         def emit(
             event_type: str,
@@ -106,6 +115,23 @@ class DiagnosisRuntime:
         def ensure_state(new_state: RuntimeState) -> None:
             if current_state is not new_state:
                 transition(new_state)
+
+        def try_repair(reason: str) -> bool:
+            nonlocal repair_attempts_used, last_round_observed, last_repair_reason
+            if repair_attempts_used >= self._repair_attempts:
+                return False
+            repair_attempts_used += 1
+            last_round_observed = True
+            last_repair_reason = reason
+            emit(
+                "agent.repair",
+                {
+                    "reason": reason,
+                    "attempt": repair_attempts_used,
+                    "remaining": self._repair_attempts - repair_attempts_used,
+                },
+            )
+            return True
 
         def finish(state: RuntimeState, stop: StopReason) -> RunResult:
             if current_state is not state:
@@ -304,6 +330,20 @@ class DiagnosisRuntime:
                 f"({frame.file_name}:{frame.line_number})"
                 for frame in primary.stack_frames[:5]
             ]
+            previous_lines: list[str] = []
+            if last_round_observed:
+                previous_lines = [
+                    "Previous observation:",
+                    f"- Assistant text: {last_assistant_text[:500] or '(empty)'}",
+                    "- Tool calls:",
+                    *(last_tool_observations[:6] or ["- (none)"]),
+                    f"- New evidence: {last_new_evidence}",
+                    f"- Repair reason: {last_repair_reason or 'none'}",
+                    (
+                        "- Repair remaining: "
+                        f"{self._repair_attempts - repair_attempts_used}"
+                    ),
+                ]
             user_content = "\n".join(
                 [
                     f"Service: {service}",
@@ -319,6 +359,7 @@ class DiagnosisRuntime:
                     *(source_lines or ["- (none)"]),
                     "Evidence:",
                     *(evidence_lines or ["- (none)"]),
+                    *(previous_lines or []),
                     (
                         "Remaining budget: "
                         f"iterations={budget.max_iterations - usage.iterations}, "
@@ -333,6 +374,35 @@ class DiagnosisRuntime:
                 Message(role="system", content=SYSTEM_PROMPT),
                 Message(role="user", content=user_content),
             ]
+
+        def evaluate_current() -> None:
+            evaluate(hypothesis, evidence)
+            emit(
+                "hypothesis.updated",
+                {
+                    "hypothesis_id": hypothesis_id,
+                    "status": hypothesis.status,
+                    "missing_evidence": hypothesis.missing_evidence,
+                },
+            )
+
+        def tool_observation(
+            call: ToolCall,
+            result: ToolResult,
+            created_count: int,
+        ) -> str:
+            args = json.dumps(
+                call.arguments,
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            )[:180]
+            status = "ok" if result.ok else f"error:{result.error_code}"
+            excerpt = _tool_excerpt(result.data)
+            return (
+                f"- {call.name}({args}) -> {status}; "
+                f"new_evidence={created_count}; excerpt={excerpt}"
+            )
 
         def evidence_from_tool(
             result: ToolResult,
@@ -492,27 +562,42 @@ class DiagnosisRuntime:
                 },
             )
 
-            if not response.tool_calls:
+            last_assistant_text = response.content[:500]
+            last_round_observed = True
+
+            if response.finish_reason == "length":
+                last_tool_observations = []
+                last_new_evidence = 0
                 transition(RuntimeState.EVALUATING)
-                evaluate(hypothesis, evidence)
-                emit(
-                    "hypothesis.updated",
-                    {
-                        "hypothesis_id": hypothesis_id,
-                        "status": hypothesis.status,
-                        "missing_evidence": hypothesis.missing_evidence,
-                    },
-                )
+                evaluate_current()
                 if hypothesis.status == "confirmed":
                     transition(RuntimeState.REPORTING)
                     return finish(
                         RuntimeState.COMPLETED,
                         StopReason.EVIDENCE_SUFFICIENT,
                     )
+                if try_repair("length"):
+                    continue
+                return finish(RuntimeState.FAILED, StopReason.ERROR)
+
+            if not response.tool_calls:
+                last_tool_observations = []
+                last_new_evidence = 0
+                transition(RuntimeState.EVALUATING)
+                evaluate_current()
+                if hypothesis.status == "confirmed":
+                    transition(RuntimeState.REPORTING)
+                    return finish(
+                        RuntimeState.COMPLETED,
+                        StopReason.EVIDENCE_SUFFICIENT,
+                    )
+                if try_repair("no_tool_calls"):
+                    continue
                 return finish(RuntimeState.INSUFFICIENT_DATA, StopReason.NO_PROGRESS)
 
             transition(RuntimeState.EXECUTING)
             new_evidence = 0
+            observations: list[str] = []
             for call in response.tool_calls:
                 if usage.tool_calls >= budget.max_tool_calls:
                     return finish(
@@ -550,22 +635,19 @@ class DiagnosisRuntime:
                         "evidence_ids": record.evidence_ids,
                     },
                 )
+                observations.append(tool_observation(call, result, len(created)))
                 new_evidence += len(created)
 
+            last_tool_observations = observations
+            last_new_evidence = new_evidence
             transition(RuntimeState.EVALUATING)
-            evaluate(hypothesis, evidence)
-            emit(
-                "hypothesis.updated",
-                {
-                    "hypothesis_id": hypothesis_id,
-                    "status": hypothesis.status,
-                    "missing_evidence": hypothesis.missing_evidence,
-                },
-            )
+            evaluate_current()
             if hypothesis.status == "confirmed":
                 transition(RuntimeState.REPORTING)
                 return finish(RuntimeState.COMPLETED, StopReason.EVIDENCE_SUFFICIENT)
             if new_evidence == 0:
+                if try_repair("no_new_evidence"):
+                    continue
                 return finish(RuntimeState.INSUFFICIENT_DATA, StopReason.NO_PROGRESS)
             if usage.tool_calls >= budget.max_tool_calls:
                 return finish(RuntimeState.STOPPED_BUDGET, StopReason.BUDGET_EXHAUSTED)
@@ -592,6 +674,17 @@ def _find_seed_matches(
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _tool_excerpt(data: Any, limit: int = 300) -> str:
+    if isinstance(data, dict) and isinstance(data.get("text"), str):
+        text = data["text"]
+    else:
+        try:
+            text = json.dumps(data, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            text = str(data)
+    return " ".join(text.split())[:limit]
 
 
 def _usage_total(usage: Any) -> int | None:

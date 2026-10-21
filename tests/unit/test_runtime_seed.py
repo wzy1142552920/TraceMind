@@ -72,8 +72,8 @@ def test_seed_evidence_without_tool_calls() -> None:
 
     assert result.state is RuntimeState.INSUFFICIENT_DATA
     assert result.stop_reason is StopReason.NO_PROGRESS
-    assert result.budget_usage["iterations"] == 1
-    assert result.budget_usage["llm_calls"] == 1
+    assert result.budget_usage["iterations"] == 3
+    assert result.budget_usage["llm_calls"] == 3
     assert result.budget_usage["tool_calls"] == 0
 
     hypothesis = result.hypotheses[0]

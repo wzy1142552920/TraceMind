@@ -1,7 +1,7 @@
 # TraceMind v0.2 验收矩阵
 
 - **日期**：2026-10-21
-- **状态**：IN PROGRESS（T1–T3 已实现；T4–T6 planned）
+- **状态**：IN PROGRESS（T1–T4 已实现；T5–T6 planned）
 - **范围**：T1–T6
 - **AC 总数**：40
 - **Live 状态**：规划时未配置 `DEEPSEEK_API_KEY`；live AC 在真实运行前标记 **BLOCKED**，不得标记 PASS
@@ -50,13 +50,13 @@
 
 | AC | 验收标准 | 计划验证 | 状态 |
 |---|---|---|---|
-| AC-T4-01 | 下一轮 prompt 含上一轮工具调用/结果/错误/新证据摘要 | `test_prompt_contains_previous_observation` | PLANNED |
-| AC-T4-02 | text-only 响应可 repair 后恢复 | `test_text_only_repair` | PLANNED |
-| AC-T4-03 | unknown tool/invalid args/duplicate/无新证据可 repair | 多场景 fake provider tests | PLANNED |
-| AC-T4-04 | `finish_reason=length` 不执行半截工具；repair 或明确失败 | `test_length_finish_reason` | PLANNED |
-| AC-T4-05 | repair 最多 2 轮且受预算限制 | `test_repair_budget_exhaustion` | PLANNED |
-| AC-T4-06 | 只有 Evaluator 可 confirmed；模型文本不能直接确认 | `test_model_prose_cannot_confirm` | PLANNED |
-| AC-T4-07 | Mock happy path 行为不变 | `test_happy_path_confirms_hypothesis` | PLANNED |
+| AC-T4-01 | 下一轮 prompt 含上一轮工具调用/结果/错误/新证据摘要 | `test_text_only_repair_recovers` / second-prompt assertions | PASS |
+| AC-T4-02 | text-only 响应可 repair 后恢复 | `test_text_only_repair_recovers` | PASS |
+| AC-T4-03 | unknown tool/invalid args/duplicate/无新证据可 repair | `test_unknown_tool_repair_recovers` / `test_invalid_arguments_repair_recovers` / duplicate integration | PASS |
+| AC-T4-04 | `finish_reason=length` 不执行半截工具；repair 或明确失败 | `test_length_finish_reason_does_not_execute_tool_call` | PASS |
+| AC-T4-05 | repair 最多 2 轮且受预算限制 | `test_repair_exhaustion_stops_without_confirmation` / `test_repair_is_bounded_by_iteration_budget` | PASS |
+| AC-T4-06 | 只有 Evaluator 可 confirmed；模型文本不能直接确认 | `test_repair_exhaustion_stops_without_confirmation` | PASS |
+| AC-T4-07 | Mock happy path 行为不变 | `test_happy_path_confirms_hypothesis` | PASS |
 
 ## 5. T5 — Opt-in live verification
 

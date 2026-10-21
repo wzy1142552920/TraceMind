@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T4
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T2、T3
 - **下游**：T5、T6
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T4 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T4 spec、T3 usage 契约、现有 Runtime 的主循环/预算/停止。
@@ -40,20 +40,20 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/diagnosis/runtime.py` observation/repair
-- [ ] `src/tracemind/diagnosis/budget.py`/config repair 限制
-- [ ] `src/tracemind/diagnosis/state.py` 事件字段（如需要）
-- [ ] `tests/unit/test_live_resilience.py`
-- [ ] 更新 Mock 脚本/运行集成测试
+- [x] `src/tracemind/diagnosis/runtime.py` observation/repair
+- [x] `src/tracemind/diagnosis/budget.py`/config repair 限制
+- [x] `src/tracemind/diagnosis/state.py` 事件字段（如需要）
+- [x] `tests/unit/test_live_resilience.py`
+- [x] 更新 Mock 脚本/运行集成测试
 
 ## 3. Definition of Done
 
-- [ ] AC-T4-01 至 AC-T4-07 全部满足。
-- [ ] 上一轮工具结果/错误确实进入下一轮 prompt。
-- [ ] text-only/unknown/invalid/duplicate/length 在 2 次 repair 内恢复或明确停止。
-- [ ] 只有 Evaluator 能 confirmed；模型文本不能绕过。
-- [ ] Mock happy path 不变；空计划仍最终 no_progress。
-- [ ] 预算/停止原因/事件正确。
+- [x] AC-T4-01 至 AC-T4-07 全部满足。
+- [x] 上一轮工具结果/错误确实进入下一轮 prompt。
+- [x] text-only/unknown/invalid/duplicate/length 在 2 次 repair 内恢复或明确停止。
+- [x] 只有 Evaluator 能 confirmed；模型文本不能绕过。
+- [x] Mock happy path 不变；空计划仍最终 no_progress。
+- [x] 预算/停止原因/事件正确。
 
 ## 4. 验证命令
 
@@ -77,4 +77,10 @@ uv run mypy src
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 文档阶段 |
+| 2026-10-21 | Claude | T4 专项 pytest | 13 passed | resilience/runtime/seed |
+| 2026-10-21 | Claude | `uv run pytest -q` | 145 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 36 source files | — |
+| 2026-10-21 | Claude | 上一轮观察 | assistant/tool/error/new evidence 进入下一 prompt | 2nd/3rd prompt |
+| 2026-10-21 | Claude | repair/length | text-only/unknown/invalid/no-evidence 恢复；length 不执行半截工具 | bounded 2 |
+| 2026-10-21 | Claude | 确认边界 | 模型文本未直接 confirmed | Evaluator-only |

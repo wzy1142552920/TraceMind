@@ -1,7 +1,7 @@
 # T4 — Live-Plan Resilience Spec
 
 - **任务 ID**：T4
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T2、T3
 - **下游**：T5、T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -139,8 +139,21 @@ uv run ruff check .
 uv run mypy src
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令/检查 | 结果 |
+|---|---|---|
+| 2026-10-21 | T4 专项 `pytest`（resilience/runtime/seed） | 13 passed |
+| 2026-10-21 | 全量 `pytest` | 145 passed |
+| 2026-10-21 | `ruff check .` / `mypy src` | 通过；36 个源文件 |
+| 2026-10-21 | 上一轮观察 | 第二、三轮 prompt 含 assistant/tool/error/new evidence |
+| 2026-10-21 | repair | text-only/unknown/invalid/no-evidence 可恢复；最多 2 轮 |
+| 2026-10-21 | length | 不执行半截工具；repair 后恢复 |
+| 2026-10-21 | 确认边界 | 模型文本不能直接 confirmed；只有 Evaluator 确认 |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T4 spec；定义上一轮观察、有限 repair、length/错误处理和 Evaluator 边界 |
+| 2026-10-21 | T4 实现完成；observation/repair/length/E2E 恢复路径通过 |
