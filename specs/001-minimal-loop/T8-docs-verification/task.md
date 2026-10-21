@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T8
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1–T7
 - **下游**：无（v0.1 交付）
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供后续实现会话执行。T8 在 T1–T7 完成后执行。
+> T8 已完成；以下步骤保留作为复现指南。T8 在 T1–T7 完成后执行。
 
 1. **确认前置**
    - 确认 T1–T7 的 spec/task 已完成并回填验证结果。
@@ -47,22 +47,22 @@
 
 ## 2. 交付物
 
-- [ ] 根目录 `README.md`
-- [ ] `specs/001-minimal-loop/ACCEPTANCE.md`（详细验收矩阵）
-- [ ] Demo 步骤/命令
-- [ ] 已知限制/v0.1 vs v2 对照
-- [ ] 文档检查记录
-- [ ] 最终验证结果
+- [x] 根目录 `README.md`
+- [x] `specs/001-minimal-loop/ACCEPTANCE.md`（详细验收矩阵）
+- [x] Demo 步骤/命令
+- [x] 已知限制/v0.1 vs v2 对照
+- [x] 文档检查记录
+- [x] 最终验证结果
 
 ## 3. Definition of Done
 
-- [ ] T8 spec 的 AC-T8-01 至 AC-T8-08 全部满足。
-- [ ] README 快速开始/Demo 可复制执行。
-- [ ] 验收矩阵覆盖 T1–T7 全部 AC，证据具体。
-- [ ] 8 个 spec + 8 个 task 齐全、链接有效。
-- [ ] 已知限制和 deferred 列表清楚。
-- [ ] 原始设计文档未修改；没有把未执行写成通过。
-- [ ] E2E/测试/静态检查结果已记录。
+- [x] T8 spec 的 AC-T8-01 至 AC-T8-08 全部满足。
+- [x] README 快速开始/Demo 可复制执行。
+- [x] 验收矩阵覆盖 T1–T7 全部 AC，证据具体。
+- [x] 8 个 spec + 8 个 task 齐全、链接有效。
+- [x] 已知限制和 deferred 列表清楚。
+- [x] 原始设计文档未修改；没有把未执行写成通过。
+- [x] E2E/测试/静态检查结果已记录。
 
 ## 4. 验证命令
 
@@ -91,6 +91,13 @@ uv run mypy src
 
 ## 6. 验证结果（实现后回填）
 
-| 日期 | 执行人 | 命令 | 结果 | 备注 |
+| 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 当前阶段只生成文档 |
+| 2026-10-21 | Claude | `find specs/001-minimal-loop -name spec.md \| wc -l` | 8 | — |
+| 2026-10-21 | Claude | `find specs/001-minimal-loop -name task.md \| wc -l` | 8 | — |
+| 2026-10-21 | Claude | `uv run pytest -q` | 112 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 35 source files | — |
+| 2026-10-21 | Claude | Mock CLI Demo | 退出码 0；5 类产物；confirmed | 引用校验 true |
+| 2026-10-21 | Claude | 链接检查 | 无断链 | README + specs |
+| 2026-10-21 | Claude | 原始设计文档检查 | mtime/size 未变化 | 未被修改 |

@@ -1,6 +1,6 @@
 # TraceMind v0.1 — 最小循环 SDD 文档
 
-- **状态**：in progress（T1–T7 implemented；T8 draft）
+- **状态**：v0.1 delivered（T1–T8 implemented）
 - **范围**：只包含 SDD 文档，不包含代码
 - **父设计文档**：[TraceMind Agent 系统设计文档 v2.0](../../docs/TraceMind_Agent_System_Design_v2.md)
 - **目标**：把 v0.1 walking skeleton 拆成 8 个可独立实现、可独立验收的子任务
@@ -51,7 +51,9 @@ uv run tracemind diagnose \
 | T5 | LLM Provider 与 Mock/DeepSeek | T1 | implemented | [spec](./T5-llm-provider/spec.md) | [task](./T5-llm-provider/task.md) |
 | T6 | Agent Runtime、Evidence、Evaluator | T2、T3、T4、T5 | implemented | [spec](./T6-agent-runtime/spec.md) | [task](./T6-agent-runtime/task.md) |
 | T7 | 报告、CLI 与运行产物 | T6 | implemented | [spec](./T7-report-cli/spec.md) | [task](./T7-report-cli/task.md) |
-| T8 | 文档、Demo 与最终验证 | T1–T7 | draft | [spec](./T8-docs-verification/spec.md) | [task](./T8-docs-verification/task.md) |
+| T8 | 文档、Demo 与最终验证 | T1–T7 | implemented | [spec](./T8-docs-verification/spec.md) | [task](./T8-docs-verification/task.md) |
+
+详细验收矩阵：[ACCEPTANCE.md](./ACCEPTANCE.md)。
 
 ## 3. 依赖关系
 

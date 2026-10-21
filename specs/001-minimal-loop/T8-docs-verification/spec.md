@@ -1,7 +1,7 @@
 # T8 — 文档、Demo 与最终验证 Spec
 
 - **任务 ID**：T8
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1–T7
 - **下游**：无（v0.1 交付）
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -162,8 +162,22 @@ uv run tracemind diagnose \
   --provider mock
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 检查 | 结果 |
+|---|---|---|
+| 2026-10-21 | README / ACCEPTANCE | 根 README、完整 T1–T7 验收矩阵已创建 |
+| 2026-10-21 | Spec / Task 数量 | 8 spec / 8 task |
+| 2026-10-21 | 链接检查 | 无断链 |
+| 2026-10-21 | 全量测试 | 112 passed |
+| 2026-10-21 | `ruff check .` / `mypy src` | 通过；35 个源文件 |
+| 2026-10-21 | Mock CLI Demo | 退出码 0；5 类产物；报告 confirmed；引用校验 true |
+| 2026-10-21 | 原始设计文档 | 未被修改（mtime/size 未变化） |
+| 2026-10-21 | 未执行项 | T3-AC-08 标记 DEFERRED，未写成通过 |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T8 spec；定义 README、验收矩阵、Demo、限制和最终验证 |
+| 2026-10-21 | T8 完成；README/验收矩阵/最终验证落地；v0.1 交付 |
