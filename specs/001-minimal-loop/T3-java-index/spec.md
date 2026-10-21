@@ -1,7 +1,7 @@
 # T3 — Java 源码索引 Spec
 
 - **任务 ID**：T3
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1、T2
 - **下游**：T4、T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -108,7 +108,7 @@ class JavaIndex(Protocol):
 | AC-T3-05 | 嵌套类 FQN 可通过 `$` 或 `.` 形式匹配 | 单元测试 |
 | AC-T3-06 | 重载方法按行号范围选择候选；无法消歧时返回多个候选 | 单元测试 |
 | AC-T3-07 | 行号超出文件范围时裁剪并标记 | 单元测试 |
-| AC-T3-08 | 没有 tree-sitter 时，fallback 能找到相同的 fixture 方法，并标记 provenance | 单元测试（可选 mock/开关） |
+| AC-T3-08 | （可选/deferred）没有 tree-sitter 时，fallback 能找到相同的 fixture 方法，并标记 provenance | tree-sitter 0.26.0 + tree-sitter-java 0.23.5 已验证；regex fallback 不在 v0.1 验收内 |
 
 ## 7. 测试计划
 
@@ -184,7 +184,7 @@ public class OrderService {
 
 | 风险 | 说明 | 缓解 |
 |---|---|---|
-| tree-sitter-java 安装失败 | wheel 与 Python 3.12/macOS 不兼容 | 同接口 regex fallback；T1 安装时验证；README 记录 |
+| tree-sitter-java 安装失败 | wheel 与 Python 3.12/macOS 不兼容 | **已验证**：tree-sitter 0.26.0 + tree-sitter-java 0.23.5 可导入并解析；regex fallback 作为 post-v0.1 可选实现 |
 | 嵌套类 FQN | 堆栈用 `$`，源码用 `.` | 索引/匹配时统一规范化 |
 | 重载方法 | 同名方法多个 | 用行号范围选择；无法消歧返回多个候选 |
 | 方法范围 | tree-sitter 节点范围可能包含注释/注解 | 行号裁剪和测试；报告引用以方法范围为准 |
@@ -203,8 +203,19 @@ public class OrderService {
 uv run pytest tests/unit/test_java_index.py -q
 ```
 
-## 11. 变更记录
+## 11. 实现验证结果
+
+| 日期 | 命令 | 结果 |
+|---|---|---|
+| 2026-10-21 | `uv run pytest tests/unit/test_java_index.py -q` | 16 passed |
+| 2026-10-21 | `uv run pytest -q` | 48 passed |
+| 2026-10-21 | `uv run ruff check .` | All checks passed |
+| 2026-10-21 | `uv run mypy src` | Success: no issues found in 17 source files |
+| 2026-10-21 | tree-sitter-java 手动索引 | 3 files / 19 symbols；T2 的 3 个栈帧均命中正确方法/行号 |
+
+## 12. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T3 spec；定义单仓库索引、frame 匹配、fixture 和验收标准 |
+| 2026-10-21 | T3 实现完成；tree-sitter 索引、嵌套类/重载/构造器、源码范围与引用安全测试通过；regex fallback 标记为可选 deferred |

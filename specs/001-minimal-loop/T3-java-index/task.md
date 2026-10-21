@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T3
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1、T2
 - **下游**：T4、T6
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供后续实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T3 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T3 `spec.md` 和 T2 的 `StackFrame` 契约。
@@ -52,22 +52,23 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/indexing/__init__.py`
-- [ ] `src/tracemind/indexing/java_index.py`
-- [ ] `fixtures/repos/minimal-order-service/src/main/java/com/example/order/OrderService.java`
-- [ ] `fixtures/repos/minimal-order-service/src/main/java/com/example/order/OrderController.java`
-- [ ] `fixtures/repos/minimal-order-service/src/main/java/com/example/order/OrderMapper.java`
-- [ ] `tests/unit/test_java_index.py`
-- [ ] 可选的 `src/tracemind/indexing/regex_index.py`
+- [x] `src/tracemind/indexing/__init__.py`
+- [x] `src/tracemind/indexing/java_index.py`
+- [x] `fixtures/repos/minimal-order-service/src/main/java/com/example/order/OrderService.java`
+- [x] `fixtures/repos/minimal-order-service/src/main/java/com/example/order/OrderController.java`
+- [x] `fixtures/repos/minimal-order-service/src/main/java/com/example/order/OrderMapper.java`
+- [x] `tests/unit/test_java_index.py`
+- [ ]（deferred）可选的 `src/tracemind/indexing/regex_index.py`
 
 ## 3. Definition of Done
 
-- [ ] T3 spec 的 AC-T3-01 至 AC-T3-08 全部满足。
-- [ ] T2 的首帧能解析到 fixture 的 `OrderService.java:24`。
-- [ ] 找不到/越界/空仓库不抛异常。
-- [ ] 所有 `SourceMatch` 带 provenance/confidence。
-- [ ] fixture 行号与 T2 日志、T4/T6 断言一致。
-- [ ] tree-sitter 不可用时有明确 fallback 路径或明确失败提示，不静默返回空结果。
+- [x] T3 spec 的 AC-T3-01 至 AC-T3-07 全部满足。
+- [x] AC-T3-08（可选 regex fallback）已在 T3 spec 标记为 deferred；tree-sitter 已验证可用。
+- [x] T2 的首帧能解析到 fixture 的 `OrderService.java:24`。
+- [x] 找不到/越界/空仓库不抛异常。
+- [x] 所有 `SourceMatch` 带 provenance/confidence。
+- [x] fixture 行号与 T2 日志、T4/T6 断言一致。
+- [x] tree-sitter 不可用时有明确 fallback 路径或明确失败提示，不静默返回空结果。
 
 ## 4. 验证命令
 
@@ -77,7 +78,7 @@ uv run pytest tests/unit/test_java_index.py -q
 
 ## 5. 开放问题 / 风险
 
-- **tree-sitter API**：`tree_sitter_java.language()` 的导入方式、节点类型名需在实现时确认；先用小脚本验证，再写正式代码。
+- **tree-sitter API**：已验证 `tree_sitter_java.language()` 导入、`Parser(Language(...))` 和 class/method 节点提取；实现使用 tree-sitter 0.26.0 + tree-sitter-java 0.23.5。
 - **行号稳定性**：fixture 中的 throw 必须在第 24 行；用测试断言，避免格式化/加注释后漂移。
 - **嵌套类**：树遍历需要把外层类名拼进 FQN；堆栈中的 `$` 形式要能匹配。
 - **重载方法**：v0.1 用行号范围消歧；如果两个重载范围重叠（不可能）或行号缺失，返回多个候选。
@@ -88,4 +89,8 @@ uv run pytest tests/unit/test_java_index.py -q
 
 | 日期 | 执行人 | 命令 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 当前阶段只生成文档 |
+| 2026-10-21 | Claude | `uv run pytest tests/unit/test_java_index.py -q` | 16 passed | T3 专项 |
+| 2026-10-21 | Claude | `uv run pytest -q` | 48 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 17 source files | — |
+| 2026-10-21 | Claude | tree-sitter-java 手动索引 | 3 files / 19 symbols | T2 的 3 个栈帧均命中 |

@@ -9,3 +9,7 @@ class TraceMindError(Exception):
 
 class LogParseError(TraceMindError):
     """Raised when a log file cannot be parsed fatally."""
+
+
+class JavaIndexError(TraceMindError):
+    """Raised when a Java repository cannot be indexed or queried."""
