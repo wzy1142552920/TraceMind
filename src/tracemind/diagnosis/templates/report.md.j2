@@ -1,0 +1,74 @@
+# TraceMind 诊断报告
+
+- **Incident**：{{ report.incident_id }}
+- **Run**：{{ report.run_id }}
+- **Service**：{{ report.service }}
+- **状态**：{{ report.status }}
+- **Schema**：{{ report.schema_version }}
+
+## 摘要
+
+{{ report.summary }}
+
+## 根因候选
+
+{% if report.root_causes %}
+{% for root in report.root_causes %}
+### {{ root.hypothesis_id }}：{{ root.statement }}
+
+- 状态：{{ root.status }}
+- 证据 ID：{{ root.evidence_ids | join(', ') if root.evidence_ids else '（无）' }}
+- 来源：{{ root.source_refs | join(', ') if root.source_refs else '（无）' }}
+- 缺失证据：{{ root.missing_evidence | join(', ') if root.missing_evidence else '（无）' }}
+
+{% endfor %}
+{% else %}
+无支持的根因候选。
+{% endif %}
+
+## 证据来源
+
+{% if report.sources %}
+{% for source in report.sources %}
+- [{{ source.kind }}] [{{ 'verified' if source.verified else 'unverified' }}] `{{ source.source_ref }}`
+{% endfor %}
+{% else %}
+- （无）
+{% endif %}
+
+## 工具调用
+
+{% if report.tool_calls %}
+{% for record in report.tool_calls %}
+- `{{ record.tool_call_id }}` `{{ record.tool_name }}` ({{ 'ok' if record.ok else 'error:' ~ record.error_code }}, {{ record.duration_ms }}ms)
+{% endfor %}
+{% else %}
+- （无）
+{% endif %}
+
+## 停止原因
+
+- state: `{{ report.stop.state }}`
+- reason: `{{ report.stop.reason }}`
+
+## 限制
+
+{% if report.limitations %}
+{% for item in report.limitations %}
+- {{ item }}
+{% endfor %}
+{% else %}
+- （无）
+{% endif %}
+
+## 校验
+
+- citations_valid: {{ report.validation.citations_valid }}
+- evidence_ids_valid: {{ report.validation.evidence_ids_valid }}
+- status_consistent: {{ report.validation.status_consistent }}
+{% if report.validation.errors %}
+- errors:
+{% for error in report.validation.errors %}
+  - {{ error }}
+{% endfor %}
+{% endif %}

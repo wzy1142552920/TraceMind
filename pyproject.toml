@@ -10,6 +10,7 @@ dependencies = [
     "tree-sitter",
     "tree-sitter-java",
     "openai",
+    "jinja2",
 ]
 
 [project.scripts]
@@ -29,6 +30,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tracemind"]
+include = ["src/tracemind/diagnosis/templates/*.j2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

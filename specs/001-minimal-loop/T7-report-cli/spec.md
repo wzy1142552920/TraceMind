@@ -1,7 +1,7 @@
 # T7 — 报告、CLI 与运行产物 Spec
 
 - **任务 ID**：T7
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T6
 - **下游**：T8
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -16,6 +16,7 @@ T1–T6 已能跑出 `RunResult`，但用户需要的是可执行的 CLI 和可�
 ## 2. In scope
 
 - 报告 JSON schema `0.1` 和 Markdown 报告。
+- Markdown 使用 Jinja2 模板 `src/tracemind/diagnosis/templates/report.md.j2`，避免在 Python 中硬编码版式。
 - 引用校验：`repo://`、`log://`、证据 ID、状态一致性。
 - 运行产物：
   - `run.json`
@@ -42,7 +43,7 @@ T1–T6 已能跑出 `RunResult`，但用户需要的是可执行的 CLI 和可�
 | ID | 需求 | 优先级 |
 |---|---|---|
 | FR-T7-01 | 生成 `report.json`（schema 0.1），字段完整 | must |
-| FR-T7-02 | 生成 `report.md`，包含摘要/根因/证据/源码/工具/限制 | must |
+| FR-T7-02 | 使用 Jinja2 模板生成 `report.md`，包含摘要/根因/证据/源码/工具/限制 | must |
 | FR-T7-03 | 校验源码引用：文件存在、行号范围有效 | must |
 | FR-T7-04 | 校验日志引用：event_id 存在或行号范围有效 | must |
 | FR-T7-05 | 校验证据 ID 存在、根因引用的证据存在、状态一致 | must |
@@ -202,7 +203,7 @@ uv run tracemind diagnose \
 
 ### 单元
 
-- `tests/unit/test_report.py`：状态映射、根因/来源生成、schema。
+- `tests/unit/test_report.py`：状态映射、根因/来源生成、schema、模板条件分支。
 - `tests/unit/test_citation_validator.py`：repo/log 引用、无效行号、缺失证据、状态不一致。
 - `tests/unit/test_run_store.py`：5 类产物、JSONL 可解析、run_id 不覆盖。
 
@@ -237,8 +238,22 @@ uv run pytest tests/unit/test_report.py tests/unit/test_citation_validator.py \
   tests/unit/test_run_store.py tests/e2e/test_minimal_loop.py -q
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令 | 结果 |
+|---|---|---|
+| 2026-10-21 | T7 专项 `pytest`（report/citation/run_store/e2e） | 16 passed |
+| 2026-10-21 | `uv run pytest -q` | 112 passed |
+| 2026-10-21 | `uv run ruff check .` | All checks passed |
+| 2026-10-21 | `uv run mypy src` | Success: no issues found in 35 source files |
+| 2026-10-21 | 手动 CLI mock | 退出码 0；5 类产物；报告 `confirmed`；引用校验通过 |
+| 2026-10-21 | 异常 E2E | 证据不足退出 3；预算耗尽退出 4；两次运行生成不同 run 目录 |
+| 2026-10-21 | Jinja2 模板 | 正常/空 sections 渲染通过 | `test_report.py` 模板用例 |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T7 spec；定义报告 schema、引用校验、运行产物、CLI 和退出码 |
+| 2026-10-21 | T7 实现完成；报告/引用校验/RunStore/CLI/E2E 落地 |
+| 2026-10-21 | 报告 Markdown 改为 Jinja2 模板（`report.md.j2`）；新增模板渲染测试 |

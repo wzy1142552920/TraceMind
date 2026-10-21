@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T7
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T6
 - **下游**：T8
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供后续实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T7 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T7 `spec.md`，确认报告字段、状态映射、引用格式、CLI 参数、退出码。
@@ -20,7 +20,7 @@
    - 不引入 LLM 生成报告文本。
 
 3. **先写报告/校验测试**
-   - `tests/unit/test_report.py`：状态映射、根因/来源生成。
+   - `tests/unit/test_report.py`：状态映射、根因/来源生成、Jinja2 模板条件分支。
    - `tests/unit/test_citation_validator.py`：repo/log 引用、无效行号、缺失证据、状态不一致。
    - 测试先失败。
 
@@ -32,7 +32,7 @@
 
 5. **实现报告生成**
    - 从 `RunResult` 映射 root_causes/sources/tool_calls/limitations/stop/budget_usage。
-   - 生成 Markdown 模板：摘要、根因、证据、源码、工具、限制、停止原因。
+   - 使用 Jinja2 模板 `src/tracemind/diagnosis/templates/report.md.j2` 渲染 Markdown；Python 只负责准备 `Report` 数据。
    - 不输出未脱敏敏感信息（v0.1 fixture 无敏感数据，但保留检查）。
 
 6. **实现 Run Store**
@@ -56,27 +56,28 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/diagnosis/report.py`
-- [ ] `src/tracemind/observability/events.py`（如需要事件序列化）
-- [ ] `src/tracemind/storage/run_store.py`
-- [ ] `src/tracemind/storage/__init__.py`
-- [ ] `src/tracemind/cli/main.py`（完整 diagnose）
-- [ ] `tests/unit/test_report.py`
-- [ ] `tests/unit/test_citation_validator.py`
-- [ ] `tests/unit/test_run_store.py`
-- [ ] `tests/e2e/test_minimal_loop.py`
-- [ ] `fixtures/mock/basic_plan.json`
+- [x] `src/tracemind/diagnosis/report.py`
+- [x] `src/tracemind/diagnosis/templates/report.md.j2`
+- [x] `src/tracemind/observability/events.py`（如需要事件序列化）
+- [x] `src/tracemind/storage/run_store.py`
+- [x] `src/tracemind/storage/__init__.py`
+- [x] `src/tracemind/cli/main.py`（完整 diagnose）
+- [x] `tests/unit/test_report.py`
+- [x] `tests/unit/test_citation_validator.py`
+- [x] `tests/unit/test_run_store.py`
+- [x] `tests/e2e/test_minimal_loop.py`
+- [x] `fixtures/mock/basic_plan.json`
 
 ## 3. Definition of Done
 
-- [ ] T7 spec 的 AC-T7-01 至 AC-T7-11 全部满足。
-- [ ] E2E mock 命令退出 0，生成 5 类产物。
-- [ ] 报告含根因、源码引用、证据 ID、限制；引用全部有效。
-- [ ] 证据不足/预算耗尽退出码正确。
-- [ ] `events.jsonl`/`audit.jsonl` 每行可解析。
-- [ ] 重复运行不覆盖旧目录。
-- [ ] 不依赖网络/真实 API Key（mock 路径）。
-- [ ] 报告不伪造“confirmed”；状态映射与 T6 一致。
+- [x] T7 spec 的 AC-T7-01 至 AC-T7-11 全部满足。
+- [x] E2E mock 命令退出 0，生成 5 类产物。
+- [x] 报告含根因、源码引用、证据 ID、限制；引用全部有效。
+- [x] 证据不足/预算耗尽退出码正确。
+- [x] `events.jsonl`/`audit.jsonl` 每行可解析。
+- [x] 重复运行不覆盖旧目录。
+- [x] 不依赖网络/真实 API Key（mock 路径）。
+- [x] 报告不伪造“confirmed”；状态映射与 T6 一致。
 
 ## 4. 验证命令
 
@@ -99,4 +100,10 @@ uv run pytest tests/unit/test_report.py tests/unit/test_citation_validator.py \
 
 | 日期 | 执行人 | 命令 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 当前阶段只生成文档 |
+| 2026-10-21 | Claude | T7 专项 pytest | 16 passed | report/citation/run_store/e2e |
+| 2026-10-21 | Claude | `uv run pytest -q` | 112 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 35 source files | — |
+| 2026-10-21 | Claude | 手动 CLI mock | 退出码 0；5 类产物；报告 confirmed | 引用校验通过 |
+| 2026-10-21 | Claude | 异常 E2E | 证据不足退出 3；预算耗尽退出 4 | 重复运行生成不同 run 目录 |
+| 2026-10-21 | Claude | Jinja2 模板 | 正常/空 sections 渲染通过 | `test_report.py` 模板用例 |

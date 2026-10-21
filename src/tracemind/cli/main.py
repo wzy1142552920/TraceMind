@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from typing import NoReturn
+
 import typer
 from rich.console import Console
 
 from tracemind import __version__
+from tracemind.core.errors import JavaIndexError, LogParseError
+from tracemind.diagnosis.budget import Budget
+from tracemind.diagnosis.report import build_report
+from tracemind.diagnosis.runtime import DiagnosisRuntime
+from tracemind.diagnosis.state import RuntimeState
+from tracemind.indexing.java_index import TreeSitterJavaIndex
+from tracemind.llm.deepseek import DeepSeekProvider
+from tracemind.llm.mock import MockProvider
+from tracemind.llm.provider import LLMProvider, LLMProviderError
+from tracemind.log_analysis.parser import LogParser
+from tracemind.storage.run_store import RunStore
 
 app = typer.Typer(
     name="tracemind",
@@ -20,6 +35,36 @@ def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"tracemind {__version__}")
         raise typer.Exit()
+
+
+def _fail(message: str, code: int = 1) -> NoReturn:
+    console.print(f"[red]{message}[/red]")
+    raise typer.Exit(code=code)
+
+
+def _build_provider(
+    provider_name: str,
+    mock_script: Path | None,
+) -> tuple[LLMProvider, str]:
+    if provider_name == "mock":
+        script = mock_script or Path("fixtures/mock/basic_plan.json")
+        try:
+            return MockProvider.from_script(script), "script"
+        except LLMProviderError as exc:
+            _fail(f"mock provider error: {exc}", code=1)
+    if provider_name == "deepseek":
+        return DeepSeekProvider(), "deepseek-chat"
+    _fail(f"unsupported provider: {provider_name}", code=2)
+
+
+def _exit_code(result, report) -> int:
+    if result.state is RuntimeState.FAILED:
+        return 1
+    if result.state is RuntimeState.STOPPED_BUDGET:
+        return 4
+    if report.status == "insufficient_data":
+        return 3
+    return 0
 
 
 @app.callback()
@@ -38,21 +83,37 @@ def main(
 
 @app.command()
 def diagnose(
-    log: str = typer.Option(..., "--log", help="Path to a log file."),
-    repo: str = typer.Option(..., "--repo", help="Path to a Java repository."),
+    log: Path = typer.Option(
+        ...,
+        "--log",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to a log file.",
+    ),
+    repo: Path = typer.Option(
+        ...,
+        "--repo",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        help="Path to a Java repository.",
+    ),
     service: str = typer.Option(..., "--service", help="Service name."),
     provider: str = typer.Option(
         "mock",
         "--provider",
         help="LLM provider to use: mock or deepseek.",
     ),
-    mock_script: str | None = typer.Option(
+    mock_script: Path | None = typer.Option(
         None,
         "--mock-script",
         help="Path to a mock response script (provider=mock).",
     ),
-    output_dir: str = typer.Option(
-        ".tracemind/runs",
+    output_dir: Path = typer.Option(
+        Path(".tracemind/runs"),
         "--output-dir",
         help="Directory for run artifacts.",
     ),
@@ -66,10 +127,107 @@ def diagnose(
         "--max-tool-calls",
         help="Maximum tool calls.",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Print a machine-readable summary instead of rich text.",
+    ),
 ) -> None:
-    """Diagnose a Java incident from a log file and a local repository.
+    """Diagnose a Java incident from a log file and a local repository."""
+    provider_name = provider.lower()
+    llm, model = _build_provider(provider_name, mock_script)
 
-    T1 placeholder: the diagnosis loop is implemented in T7.
-    """
-    console.print("[yellow]diagnose is not implemented yet (T7).[/yellow]")
-    raise typer.Exit(code=1)
+    try:
+        parsed_log = LogParser().parse(log)
+    except LogParseError as exc:
+        _fail(f"log parsing failed: {exc}", code=1)
+
+    java_index = TreeSitterJavaIndex()
+    try:
+        index_stats = java_index.index(repo)
+    except JavaIndexError as exc:
+        _fail(f"repository indexing failed: {exc}", code=1)
+
+    if index_stats.errors:
+        console.print(
+            f"[yellow]index warnings: {len(index_stats.errors)} file(s)[/yellow]"
+        )
+
+    runtime = DiagnosisRuntime(repo_root=repo)
+    try:
+        result = runtime.run(
+            parsed_log,
+            java_index,
+            service,
+            llm,
+            Budget(
+                max_iterations=max_iterations,
+                max_tool_calls=max_tool_calls,
+            ),
+        )
+    except Exception as exc:  # keep CLI failures explicit and bounded
+        _fail(f"diagnosis failed: {exc}", code=1)
+
+    try:
+        report = build_report(result, parsed_log, repo)
+        run_meta = {
+            "run_id": result.run_id,
+            "incident_id": result.incident_id,
+            "service": result.service,
+            "provider": provider_name,
+            "model": model,
+            "log_path": str(log),
+            "repo_path": str(repo),
+            "state": result.state.value,
+            "stop_reason": result.stop_reason.value,
+            "budget_usage": result.budget_usage,
+            "index": {
+                "files": index_stats.files_indexed,
+                "symbols": index_stats.symbols_indexed,
+                "errors": len(index_stats.errors),
+            },
+        }
+        run_dir = RunStore(output_dir).write(result, report, run_meta)
+    except OSError as exc:
+        _fail(f"failed to write run artifacts: {exc}", code=1)
+
+    report_path = run_dir / "report.md"
+    exit_code = _exit_code(result, report)
+
+    if json_output:
+        summary = {
+            "run_id": result.run_id,
+            "incident_id": result.incident_id,
+            "status": report.status,
+            "stop_reason": result.stop_reason.value,
+            "evidence_count": len(result.evidence),
+            "tool_calls": len(result.tool_calls),
+            "report_path": str(report_path),
+            "run_dir": str(run_dir),
+        }
+        typer.echo(json.dumps(summary, ensure_ascii=False))
+    else:
+        console.print(f"[bold]TraceMind[/bold] run={result.run_id}")
+        console.print(f"Status: [bold]{report.status}[/bold]")
+        if report.root_causes:
+            console.print(
+                f"Top candidate: {report.root_causes[0].statement}",
+                markup=False,
+            )
+        else:
+            console.print("Top candidate: (none)")
+        console.print(
+            f"Evidence: {len(result.evidence)} | "
+            f"Tool calls: {len(result.tool_calls)}"
+        )
+        console.print(
+            "Validation: "
+            f"citations={report.validation.citations_valid}, "
+            f"evidence_ids={report.validation.evidence_ids_valid}, "
+            f"status={report.validation.status_consistent}"
+        )
+        console.print(f"Report: {report_path}")
+        console.print(f"Run dir: {run_dir}")
+
+    if exit_code:
+        raise typer.Exit(code=exit_code)

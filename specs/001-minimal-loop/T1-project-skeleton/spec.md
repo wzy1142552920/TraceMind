@@ -44,7 +44,7 @@
 
 **依赖说明**
 
-- v0.1 使用同步调用；不引入 `pytest-asyncio`、`respx`、`tenacity`、`jinja2`、`pydantic-settings`。
+- v0.1 使用同步调用；不引入 `pytest-asyncio`、`respx`、`tenacity`、`pydantic-settings`。T7 报告模板追加使用 Jinja2。
 - DeepSeek adapter 使用官方 `openai` SDK；测试不依赖真实 API Key。
 - tree-sitter-java 的 wheel 兼容性需要在 T1 安装时验证；失败则记录风险，T3 使用同接口兜底。
 
@@ -126,7 +126,7 @@ tests/
 |---|---|---|
 | tree-sitter-java wheel 兼容性 | Python 3.12/macOS 可能安装失败 | **已验证**：tree-sitter 0.26.0 + tree-sitter-java 0.23.5 可导入并解析 Java；T3 仍保留同接口 fallback |
 | 依赖版本漂移 | OpenAI/Typer/Pydantic 版本变化 | 使用 `uv.lock`；不写死未验证版本 |
-| 过早引入业务依赖 | T1 只需要骨架 | 依赖按需添加；不引入 Jinja2/Tenacity 等 |
+| 过早引入业务依赖 | T1 只需要骨架 | 依赖按需添加；Jinja2 仅在 T7 报告模板阶段追加，不引入 Tenacity 等 |
 
 **开放问题**
 
@@ -164,3 +164,4 @@ uv run mypy src
 |---|---|
 | 2026-10-21 | 创建 T1 spec；定义工程骨架、依赖、CLI、验收标准 |
 | 2026-10-21 | T1 实现完成；pyproject/依赖/CLI/测试骨架落地，所有验收命令通过 |
+| 2026-10-21 | T7 追加 Jinja2 依赖用于报告模板；同步更新 T1 依赖说明与风险记录 |
