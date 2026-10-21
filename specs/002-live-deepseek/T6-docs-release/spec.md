@@ -1,7 +1,7 @@
 # T6 — 文档、验收与发布 Spec
 
 - **任务 ID**：T6
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1–T5
 - **下游**：无（v0.2 交付）
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -114,8 +114,22 @@ uv run tracemind --version
 uv run tracemind diagnose --log fixtures/logs/basic/incident.log --repo fixtures/repos/minimal-order-service --service order-service --provider mock
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令/检查 | 结果 |
+|---|---|---|
+| 2026-10-21 | `find specs/002-live-deepseek -name spec.md/task.md` | 6 spec / 6 task |
+| 2026-10-21 | 根 README v0.2 | `.env`/优先级/live/retry/repair/usage/schema 0.2 已记录 |
+| 2026-10-21 | `uv sync` / `uv run tracemind --version` | `tracemind 0.2.0`；`uv.lock` 同步 |
+| 2026-10-21 | `uv run pytest -q` | 146 passed，2 live skipped |
+| 2026-10-21 | `ruff check .` / `mypy src` | 通过；36 个源文件 |
+| 2026-10-21 | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` | 2 passed |
+| 2026-10-21 | live CLI（`deepseek-flash`） | `confirmed`；6 证据；三类证据；tokens 1119/170/1289；latency 1328ms |
+| 2026-10-21 | 相对链接 / secret 扫描 / 001+docs 检查 | 链接有效；无 secret；001 与 docs 未修改 |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T6 spec；定义 README、验收、版本、最终检查与 BLOCKED 规则 |
+| 2026-10-21 | T6 实现完成：README/schema 0.2、版本 0.2.0、验收回填与最终验证 |

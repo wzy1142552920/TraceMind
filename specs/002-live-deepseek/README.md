@@ -1,6 +1,6 @@
 # TraceMind v0.2 — 真实 DeepSeek Live 集成 SDD
 
-- **状态**：implementation in progress（T1–T5 implemented + live PASS；T6 pending）
+- **状态**：completed（T1–T6 implemented；live PASS）
 - **父设计**：[TraceMind v2.0](../../docs/TraceMind_Agent_System_Design_v2.md)
 - **v0.1 基线**：[v0.1 SDD](../001-minimal-loop/README.md)
 - **目标**：让 `--provider deepseek` 真实完成现有最小诊断循环，并补齐配置、`.env`、重试、usage/latency、计划修复和 opt-in live 验收
@@ -34,7 +34,7 @@ v0.2 不扩展平台，只把 v0.1 的 live 路径做扎实：
 | T3 | LLM usage / latency / provenance | T1、T2 | implemented | [spec](./T3-usage-observability/spec.md) | [task](./T3-usage-observability/task.md) |
 | T4 | Live-plan resilience | T2、T3 | implemented | [spec](./T4-live-plan-resilience/spec.md) | [task](./T4-live-plan-resilience/task.md) |
 | T5 | Opt-in live verification | T1–T4 | implemented（live PASS） | [spec](./T5-live-verification/spec.md) | [task](./T5-live-verification/task.md) |
-| T6 | 文档、验收与发布 | T1–T5 | draft | [spec](./T6-docs-release/spec.md) | [task](./T6-docs-release/task.md) |
+| T6 | 文档、验收与发布 | T1–T5 | implemented | [spec](./T6-docs-release/spec.md) | [task](./T6-docs-release/task.md) |
 
 执行顺序：`T1 -> T2 -> T3 -> T4 -> T5 -> T6`。T3/T4 都改 runtime，串行实施。
 
@@ -88,7 +88,7 @@ CLI 参数 > 真实环境变量 > 项目根 .env > 默认值
 
 详细矩阵：[ACCEPTANCE.md](./ACCEPTANCE.md)。
 
-T1–T5 AC 已通过并回填；live 已在 `deepseek-flash` 上通过；T6 待完成。
+T1–T6 AC 已全部通过并回填：离线 146 passed + 2 live skipped，live 2 passed（`deepseek-flash`），lint/typecheck 通过。
 
 ## 5. 复用与不做重写
 
@@ -112,3 +112,5 @@ T1–T5 AC 已通过并回填；live 已在 `deepseek-flash` 上通过；T6 待�
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 v0.2 SDD 索引与 T1–T6 任务拆分；包含 `.env` 配置和 live BLOCKED 规则 |
+| 2026-10-21 | T1–T5 实现并完成真实 `deepseek-flash` live 验证；live AC 回填 PASS |
+| 2026-10-21 | T6 完成：README/schema 0.2、版本 0.2.0、验收回填与最终检查 |

@@ -1,7 +1,7 @@
 # TraceMind v0.2 验收矩阵
 
 - **日期**：2026-10-21
-- **状态**：IN PROGRESS（T1–T5 已实现 + live PASS；T6 planned）
+- **状态**：COMPLETED（T1–T6 全部实现；live PASS）
 - **范围**：T1–T6
 - **AC 总数**：40
 - **Live 状态**：2026-10-21 已用 `deepseek-flash` 完成 live adapter + CLI 验证
@@ -72,12 +72,12 @@
 
 | AC | 验收标准 | 计划验证 | 状态 |
 |---|---|---|---|
-| AC-T6-01 | 002 README + ACCEPTANCE + T1–T6 spec/task 齐全 | `find`/链接检查 | PLANNED |
-| AC-T6-02 | README 记录 `.env`、优先级、live 命令、retry/repair/usage | 文档检查 | PLANNED |
-| AC-T6-03 | 包版本升到 0.2.0 | `uv run tracemind --version` / pyproject | PLANNED |
-| AC-T6-04 | 离线 pytest/ruff/mypy 通过；live 状态如实记录 | 全量命令 | PLANNED |
-| AC-T6-05 | 链接有效；001 specs 和 docs 设计文档未修改 | 链接检查 + mtime/size | PLANNED |
-| AC-T6-06 | 无伪造 live PASS；无 Key 时保持 BLOCKED | 验收文档审查 | PLANNED |
+| AC-T6-01 | 002 README + ACCEPTANCE + T1–T6 spec/task 齐全 | `find`（6 spec / 6 task）+ 链接检查 | PASS |
+| AC-T6-02 | README 记录 `.env`、优先级、live 命令、retry/repair/usage | 根 README v0.2 检查 | PASS |
+| AC-T6-03 | 包版本升到 0.2.0 | `uv run tracemind --version` → `tracemind 0.2.0`；`uv.lock` 同步 | PASS |
+| AC-T6-04 | 离线 pytest/ruff/mypy 通过；live 状态如实记录 | 146 passed + 2 skipped；ruff/mypy 通过；live 2 passed | PASS |
+| AC-T6-05 | 链接有效；001 specs 和 docs 设计文档未修改 | 相对链接检查；`git status` 未包含 001/docs | PASS |
+| AC-T6-06 | 无伪造 live PASS；无 Key 时保持 BLOCKED | 本地 `.env` 配置下实际运行 live PASS，记录见 T5/T6 | PASS |
 
 ## 7. 计划验证命令
 
@@ -102,9 +102,10 @@ uv run tracemind diagnose \
   --max-iterations 4 --max-tool-calls 6 --llm-max-tokens 800
 ```
 
-## 8. 当前限制
+## 8. 最终验证与限制
 
-- T1–T5 已执行并回填 PASS；T6 仍为 planned。
-- live 已于 2026-10-21 在 `deepseek-flash` 上通过：CLI `confirmed`、三类证据、tokens 1119/164/1283、latency 1699ms。
+- T1–T6 已全部执行并回填 PASS。
+- 2026-10-21 最终验证：默认 `uv run pytest -q` → **146 passed, 2 skipped**；`TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` → **2 passed**；`ruff check .`、`mypy src`（36 文件）通过。
+- live CLI（2026-10-21）：`deepseek-flash`、`confirmed`、6 条证据、三类证据、tokens 1119/170/1289、latency 1328ms；run/report schema `0.2`；产物无 secret。
 - live 成功标准只断言结构/证据/报告，不硬编码自然语言答案；DeepSeek 输出有非确定性。
-- 仍只覆盖单个合成 fixture，不代表生产准确率。
+- 仍只覆盖单个合成 fixture，不代表生产准确率；live 结果依赖外部 Key/网络和模型版本。

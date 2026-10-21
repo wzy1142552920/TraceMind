@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T6
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1–T5
 - **下游**：无（v0.2 交付）
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供实现会话执行。T6 在 T1–T5 完成后执行。
+> T1–T5 已完成；以下步骤已于 2026-10-21 执行。
 
 1. **确认前置**
    - T1–T5 spec/task 已回填验证结果。
@@ -32,7 +32,7 @@
    - 验证 `tracemind --version`。
 
 5. **最终检查**
-   - 8? 6 spec/task 计数（002 下 6/6）。
+   - 6 spec/task 计数（002 下 6/6）。
    - 链接、术语、README 命令。
    - pytest/ruff/mypy/Mock CLI。
    - secret 扫描。
@@ -44,22 +44,22 @@
 
 ## 2. 交付物
 
-- [ ] 根 README v0.2
-- [ ] 002 ACCEPTANCE 回填
-- [ ] pyproject/uv.lock/`__version__` 0.2.0
-- [ ] 最终验证记录
-- [ ] 001/docs 未修改检查
-- [ ] live 状态（PASS/FAIL/BLOCKED）
+- [x] 根 README v0.2
+- [x] 002 ACCEPTANCE 回填
+- [x] pyproject/uv.lock/`__version__` 0.2.0
+- [x] 最终验证记录
+- [x] 001/docs 未修改检查
+- [x] live 状态（PASS）
 
 ## 3. Definition of Done
 
-- [ ] AC-T6-01 至 AC-T6-06 全部满足（live AC 可为 BLOCKED）。
-- [ ] 002 文档/链接完整。
-- [ ] README 能复制执行 `.env`/Mock/live 命令。
-- [ ] 版本 0.2.0。
-- [ ] 离线测试/ruff/mypy 通过；live 状态如实。
-- [ ] 001 specs 和 docs 设计文档未修改。
-- [ ] 无 Key 的 live AC 未写成 PASS。
+- [x] AC-T6-01 至 AC-T6-06 全部满足（live 实际 PASS）。
+- [x] 002 文档/链接完整。
+- [x] README 能复制执行 `.env`/Mock/live 命令。
+- [x] 版本 0.2.0。
+- [x] 离线测试/ruff/mypy 通过；live 状态如实。
+- [x] 001 specs 和 docs 设计文档未修改。
+- [x] live AC 为实际运行 PASS（非 BLOCKED）。
 
 ## 4. 验证命令
 
@@ -86,4 +86,10 @@ uv run tracemind diagnose --log fixtures/logs/basic/incident.log --repo fixtures
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 文档阶段；live 无 Key 时为 BLOCKED |
+| 2026-10-21 | Claude | 002 spec/task 计数 + 相对链接 | 6/6；链接有效 | — |
+| 2026-10-21 | Claude | `uv sync` / `tracemind --version` | `tracemind 0.2.0` | `uv.lock` 同步 |
+| 2026-10-21 | Claude | `uv run pytest -q` | 146 passed, 2 skipped | live 默认跳过 |
+| 2026-10-21 | Claude | `ruff check .` / `mypy src` | 通过 / 36 文件 | — |
+| 2026-10-21 | Claude | live pytest gate | 2 passed | 真实 `deepseek-flash` |
+| 2026-10-21 | Claude | live CLI | `confirmed`；6 证据；三类证据；tokens 1119/170/1289；latency 1328ms | schema 0.2 |
+| 2026-10-21 | Claude | secret 扫描 / 001+docs 状态 | 无 secret；未修改 | `git status` 复核 |
