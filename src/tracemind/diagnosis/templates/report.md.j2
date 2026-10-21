@@ -46,6 +46,19 @@
 - （无）
 {% endif %}
 
+## LLM 使用
+
+- calls: {{ report.llm_usage.calls }}
+- failed_calls: {{ report.llm_usage.failed_calls }}
+- retries: {{ report.llm_usage.retries }}
+- tokens: input={{ report.llm_usage.input_tokens }}, output={{ report.llm_usage.output_tokens }}, total={{ report.llm_usage.total_tokens }}
+- latency_ms: {{ report.llm_usage.latency_ms }}
+{% if report.llm_calls %}
+{% for call in report.llm_calls %}
+- `{{ call.llm_call_id }}` {{ call.provider }}/{{ call.model }} attempts={{ call.attempts }} latency={{ call.latency_ms }}ms finish={{ call.finish_reason }} tokens={{ call.input_tokens }}/{{ call.output_tokens }}/{{ call.total_tokens }}{% if not call.ok %} error={{ call.error_code }}{% endif %}
+{% endfor %}
+{% endif %}
+
 ## 停止原因
 
 - state: `{{ report.stop.state }}`

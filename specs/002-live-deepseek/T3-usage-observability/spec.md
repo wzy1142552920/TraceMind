@@ -1,7 +1,7 @@
 # T3 — LLM Usage / Latency / Provenance Spec
 
 - **任务 ID**：T3
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1、T2
 - **下游**：T4、T5、T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -152,8 +152,21 @@ uv run ruff check .
 uv run mypy src
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令/检查 | 结果 |
+|---|---|---|
+| 2026-10-21 | T3 专项 `pytest`（observability/report/run_store/e2e） | 12 passed |
+| 2026-10-21 | 全量 `pytest` | 139 passed |
+| 2026-10-21 | `ruff check .` / `mypy src` | 通过；36 个源文件 |
+| 2026-10-21 | Mock CLI | `LLM: calls=1 failed=0 retries=0 tokens=100/30/130` |
+| 2026-10-21 | report.json | schema 0.2；含 llm_usage/llm_calls |
+| 2026-10-21 | run.json | schema 0.2；含 llm_usage/llm_calls，无 Key |
+| 2026-10-21 | budget_usage | 仍只有 iterations/llm_calls/tool_calls |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T3 spec；定义 per-call usage、summary、run/report/CLI 流向 |
+| 2026-10-21 | T3 实现完成；usage/latency/provenance 贯通 Runtime/RunResult/report/run.json/CLI |

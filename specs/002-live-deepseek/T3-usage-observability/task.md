@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T3
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1、T2
 - **下游**：T4、T5、T6
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T3 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T3 spec、T1 settings、T2 error metadata、现有 RunResult/report/run_store/CLI。
@@ -42,22 +42,22 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/llm/messages.py` total_tokens
-- [ ] `src/tracemind/diagnosis/evidence.py` LLMCallRecord/LLMUsageSummary/RunResult fields
-- [ ] `src/tracemind/diagnosis/runtime.py` usage/latency 埋点
-- [ ] `src/tracemind/diagnosis/report.py` + `templates/report.md.j2` schema 0.2/usage
-- [ ] `src/tracemind/storage/run_store.py` run.json usage/config
-- [ ] `src/tracemind/cli/main.py` usage 输出
-- [ ] `tests/unit/test_runtime_observability.py` 及相关测试更新
+- [x] `src/tracemind/llm/messages.py` total_tokens
+- [x] `src/tracemind/diagnosis/evidence.py` LLMCallRecord/LLMUsageSummary/RunResult fields
+- [x] `src/tracemind/diagnosis/runtime.py` usage/latency 埋点
+- [x] `src/tracemind/diagnosis/report.py` + `templates/report.md.j2` schema 0.2/usage
+- [x] `src/tracemind/storage/run_store.py` run.json usage/config
+- [x] `src/tracemind/cli/main.py` usage 输出
+- [x] `tests/unit/test_runtime_observability.py` 及相关测试更新
 
 ## 3. Definition of Done
 
-- [ ] AC-T3-01 至 AC-T3-07 全部满足。
-- [ ] 每次调用有 record；成功的调用有 tokens/latency/attempts。
-- [ ] run.json/report/events/CLI 显示 usage；report schema 0.2。
-- [ ] `budget_usage` 三 key 语义不变。
-- [ ] 无 Key/`sk-` 泄漏。
-- [ ] Mock 全量测试与 live 结构兼容。
+- [x] AC-T3-01 至 AC-T3-07 全部满足。
+- [x] 每次调用有 record；成功的调用有 tokens/latency/attempts。
+- [x] run.json/report/events/CLI 显示 usage；report schema 0.2。
+- [x] `budget_usage` 三 key 语义不变。
+- [x] 无 Key/`sk-` 泄漏。
+- [x] Mock 全量测试与 live 结构兼容。
 
 ## 4. 验证命令
 
@@ -81,4 +81,9 @@ uv run mypy src
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 文档阶段 |
+| 2026-10-21 | Claude | T3 专项 pytest | 12 passed | observability/report/run_store/e2e |
+| 2026-10-21 | Claude | `uv run pytest -q` | 139 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 36 source files | — |
+| 2026-10-21 | Claude | Mock CLI | calls=1 tokens=100/30/130 latency=0ms | schema 0.2 |
+| 2026-10-21 | Claude | budget_usage | 三个原始 key 保持不变 | runtime tests |

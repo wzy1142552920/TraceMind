@@ -133,7 +133,7 @@ def test_build_confirmed_report() -> None:
     parsed = LogParser().parse(LOG_FIXTURE)
     report = build_report(_result(), parsed, REPO_FIXTURE)
 
-    assert report.schema_version == "0.1"
+    assert report.schema_version == "0.2"
     assert report.status == "confirmed"
     assert report.incident_id == "inc_test"
     assert report.run_id == "run_test"
@@ -156,7 +156,7 @@ def test_report_json_and_markdown() -> None:
     report = build_report(_result(), parsed, REPO_FIXTURE)
 
     data = json.loads(report.model_dump_json())
-    assert data["schema_version"] == "0.1"
+    assert data["schema_version"] == "0.2"
     assert data["validation"]["citations_valid"] is True
 
     markdown = render_markdown(report)
@@ -165,6 +165,7 @@ def test_report_json_and_markdown() -> None:
     assert "## 证据来源" in markdown
     assert "OrderService.java" in markdown
     assert "## 工具调用" in markdown
+    assert "## LLM 使用" in markdown
 
 
 def test_markdown_template_handles_empty_sections() -> None:

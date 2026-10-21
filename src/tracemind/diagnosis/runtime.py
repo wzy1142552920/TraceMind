@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -13,8 +14,10 @@ from tracemind.diagnosis.evaluator import evaluate
 from tracemind.diagnosis.evidence import (
     Evidence,
     Hypothesis,
+    LLMCallRecord,
     RunResult,
     ToolCallRecord,
+    summarize_llm_usage,
 )
 from tracemind.diagnosis.state import (
     RuntimeEvent,
@@ -53,9 +56,13 @@ class DiagnosisRuntime:
         *,
         tool_registry: ToolRegistry | None = None,
         repo_root: Path | None = None,
+        provider_name: str = "unknown",
+        model: str = "unknown",
     ) -> None:
         self._tool_registry = tool_registry or build_default_registry()
         self._repo_root = repo_root
+        self._provider_name = provider_name
+        self._model = model
 
     def run(
         self,
@@ -72,6 +79,7 @@ class DiagnosisRuntime:
         evidence: list[Evidence] = []
         hypotheses: list[Hypothesis] = []
         tool_records: list[ToolCallRecord] = []
+        llm_calls: list[LLMCallRecord] = []
         events: list[RuntimeEvent] = []
         current_state = RuntimeState.INGESTING
         evidence_counter = 0
@@ -115,6 +123,8 @@ class DiagnosisRuntime:
                 hypotheses=hypotheses,
                 evidence=evidence,
                 tool_calls=tool_records,
+                llm_calls=llm_calls,
+                llm_usage=summarize_llm_usage(llm_calls),
                 budget_usage=usage.as_dict(),
                 limitations=list(LIMITATIONS),
                 events=events,
@@ -409,17 +419,76 @@ class DiagnosisRuntime:
             ensure_state(RuntimeState.PLANNING)
             usage.iterations += 1
             usage.llm_calls += 1
+            call_started_at = _now()
+            call_started_clock = perf_counter()
             try:
                 response = provider.complete(build_messages(), tool_definitions)
             except LLMProviderError as exc:
-                emit("llm.error", {"code": exc.code, "message": exc.message})
+                latency_ms = int((perf_counter() - call_started_clock) * 1000)
+                call_record = LLMCallRecord(
+                    llm_call_id=f"llm_{len(llm_calls) + 1:04d}",
+                    round=usage.iterations,
+                    provider=self._provider_name,
+                    model=self._model,
+                    request_id=exc.request_id,
+                    started_at=call_started_at,
+                    latency_ms=latency_ms,
+                    attempts=exc.attempts,
+                    ok=False,
+                    error_code=exc.code,
+                )
+                llm_calls.append(call_record)
+                emit(
+                    "llm.error",
+                    {
+                        "llm_call_id": call_record.llm_call_id,
+                        "code": exc.code,
+                        "message": exc.message,
+                        "attempts": exc.attempts,
+                        "status_code": exc.status_code,
+                        "request_id": exc.request_id,
+                        "latency_ms": latency_ms,
+                    },
+                )
                 return finish(RuntimeState.FAILED, StopReason.ERROR)
 
+            latency_ms = int((perf_counter() - call_started_clock) * 1000)
+            llm_usage = response.usage
+            input_tokens = llm_usage.input_tokens if llm_usage else None
+            output_tokens = llm_usage.output_tokens if llm_usage else None
+            total_tokens = _usage_total(llm_usage)
+            call_record = LLMCallRecord(
+                llm_call_id=f"llm_{len(llm_calls) + 1:04d}",
+                round=usage.iterations,
+                provider=self._provider_name,
+                model=self._model,
+                request_id=response.raw_provider_id,
+                started_at=call_started_at,
+                latency_ms=latency_ms,
+                attempts=response.attempts,
+                ok=True,
+                finish_reason=response.finish_reason,
+                tool_calls=len(response.tool_calls),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+            )
+            llm_calls.append(call_record)
             emit(
                 "llm.called",
                 {
+                    "llm_call_id": call_record.llm_call_id,
+                    "round": usage.iterations,
+                    "provider": self._provider_name,
+                    "model": self._model,
+                    "request_id": response.raw_provider_id,
+                    "attempts": response.attempts,
                     "tool_calls": len(response.tool_calls),
                     "finish_reason": response.finish_reason,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens,
+                    "latency_ms": latency_ms,
                 },
             )
 
@@ -523,6 +592,16 @@ def _find_seed_matches(
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _usage_total(usage: Any) -> int | None:
+    if usage is None:
+        return None
+    if usage.total_tokens is not None:
+        return usage.total_tokens
+    if usage.input_tokens is not None and usage.output_tokens is not None:
+        return usage.input_tokens + usage.output_tokens
+    return None
 
 
 def _new_id(prefix: str) -> str:

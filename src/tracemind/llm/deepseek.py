@@ -213,9 +213,19 @@ def _parse_arguments(name: str, raw: Any) -> dict[str, Any]:
 def _parse_usage(raw: Any) -> Usage | None:
     if raw is None:
         return None
+    input_tokens = getattr(raw, "prompt_tokens", None)
+    output_tokens = getattr(raw, "completion_tokens", None)
+    total_tokens = getattr(raw, "total_tokens", None)
+    if (
+        total_tokens is None
+        and input_tokens is not None
+        and output_tokens is not None
+    ):
+        total_tokens = input_tokens + output_tokens
     return Usage(
-        input_tokens=getattr(raw, "prompt_tokens", None),
-        output_tokens=getattr(raw, "completion_tokens", None),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
     )
 
 

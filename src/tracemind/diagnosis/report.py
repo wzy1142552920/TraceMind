@@ -9,11 +9,15 @@ from jinja2 import Environment, PackageLoader
 from pydantic import BaseModel, Field
 
 from tracemind.core.models import ParsedLog
-from tracemind.diagnosis.evidence import RunResult
+from tracemind.diagnosis.evidence import (
+    LLMCallRecord,
+    LLMUsageSummary,
+    RunResult,
+)
 from tracemind.diagnosis.state import RuntimeState
 from tracemind.workspace.paths import resolve_under_root
 
-_SCHEMA_VERSION = "0.1"
+_SCHEMA_VERSION = "0.2"
 _REPO_REF_RE = re.compile(
     r"^repo://(?P<path>.+?)#L(?P<start>\d+)-L(?P<end>\d+)$"
 )
@@ -87,6 +91,8 @@ class Report(BaseModel):
     root_causes: list[ReportRootCause] = Field(default_factory=list)
     sources: list[ReportSource] = Field(default_factory=list)
     tool_calls: list[ReportToolCall] = Field(default_factory=list)
+    llm_usage: LLMUsageSummary = Field(default_factory=LLMUsageSummary)
+    llm_calls: list[LLMCallRecord] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     stop: ReportStop
     budget_usage: dict[str, int] = Field(default_factory=dict)
@@ -203,6 +209,10 @@ def build_report(
                 duration_ms=record.duration_ms,
             )
             for record in result.tool_calls
+        ],
+        llm_usage=result.llm_usage.model_copy(deep=True),
+        llm_calls=[
+            record.model_copy(deep=True) for record in result.llm_calls
         ],
         limitations=limitations,
         stop=ReportStop(

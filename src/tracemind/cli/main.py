@@ -219,7 +219,11 @@ def diagnose(
             f"[yellow]index warnings: {len(index_stats.errors)} file(s)[/yellow]"
         )
 
-    runtime = DiagnosisRuntime(repo_root=repo)
+    runtime = DiagnosisRuntime(
+        repo_root=repo,
+        provider_name=provider_name,
+        model=model_label,
+    )
     try:
         result = runtime.run(
             parsed_log,
@@ -237,6 +241,7 @@ def diagnose(
     try:
         report = build_report(result, parsed_log, repo)
         run_meta = {
+            "schema_version": "0.2",
             "run_id": result.run_id,
             "incident_id": result.incident_id,
             "service": result.service,
@@ -251,6 +256,10 @@ def diagnose(
                     else {}
                 ),
             },
+            "llm_usage": result.llm_usage.model_dump(),
+            "llm_calls": [
+                record.model_dump() for record in result.llm_calls
+            ],
             "log_path": str(log),
             "repo_path": str(repo),
             "state": result.state.value,
@@ -279,6 +288,7 @@ def diagnose(
             "stop_reason": result.stop_reason.value,
             "evidence_count": len(result.evidence),
             "tool_calls": len(result.tool_calls),
+            "llm_usage": result.llm_usage.model_dump(),
             "report_path": str(report_path),
             "run_dir": str(run_dir),
         }
@@ -296,6 +306,15 @@ def diagnose(
         console.print(
             f"Evidence: {len(result.evidence)} | "
             f"Tool calls: {len(result.tool_calls)}"
+        )
+        usage = result.llm_usage
+        console.print(
+            "LLM: "
+            f"calls={usage.calls} failed={usage.failed_calls} "
+            f"retries={usage.retries} "
+            f"tokens(in/out/total)="
+            f"{usage.input_tokens}/{usage.output_tokens}/{usage.total_tokens} "
+            f"latency={usage.latency_ms}ms"
         )
         console.print(
             "Validation: "

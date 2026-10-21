@@ -1,7 +1,7 @@
 # TraceMind v0.2 验收矩阵
 
 - **日期**：2026-10-21
-- **状态**：IN PROGRESS（T1–T2 已实现；T3–T6 planned）
+- **状态**：IN PROGRESS（T1–T3 已实现；T4–T6 planned）
 - **范围**：T1–T6
 - **AC 总数**：40
 - **Live 状态**：规划时未配置 `DEEPSEEK_API_KEY`；live AC 在真实运行前标记 **BLOCKED**，不得标记 PASS
@@ -38,13 +38,13 @@
 
 | AC | 验收标准 | 计划验证 | 状态 |
 |---|---|---|---|
-| AC-T3-01 | `Usage` 含 total_tokens；`LLMResponse` 含 attempts | provider tests | PLANNED |
-| AC-T3-02 | Runtime 每次 LLM 调用生成 `LLMCallRecord` | `tests/unit/test_runtime_observability.py` | PLANNED |
-| AC-T3-03 | `RunResult` 有 usage summary（calls/tokens/latency/retries） | runtime integration test | PLANNED |
-| AC-T3-04 | events/run.json/report schema 0.2 含 usage | `test_run_store.py` / `test_report.py` / E2E | PLANNED |
-| AC-T3-05 | CLI Rich/JSON 显示 model、calls、tokens、latency | CLI tests | PLANNED |
-| AC-T3-06 | `budget_usage` 仍只有 iterations/llm_calls/tool_calls | budget/runtime tests | PLANNED |
-| AC-T3-07 | usage/artifacts 不含 Key/`sk-` | secret scan | PLANNED |
+| AC-T3-01 | `Usage` 含 total_tokens；`LLMResponse` 含 attempts | provider tests | PASS |
+| AC-T3-02 | Runtime 每次 LLM 调用生成 `LLMCallRecord` | `tests/unit/test_runtime_observability.py` | PASS |
+| AC-T3-03 | `RunResult` 有 usage summary（calls/tokens/latency/retries） | runtime integration test | PASS |
+| AC-T3-04 | events/run.json/report schema 0.2 含 usage | `test_run_store.py` / `test_report.py` / E2E | PASS |
+| AC-T3-05 | CLI Rich/JSON 显示 model、calls、tokens、latency | CLI tests / manual Mock CLI | PASS |
+| AC-T3-06 | `budget_usage` 仍只有 iterations/llm_calls/tool_calls | budget/runtime tests | PASS |
+| AC-T3-07 | usage/artifacts 不含 Key/`sk-` | secret scan / E2E | PASS |
 
 ## 4. T4 — Live-plan resilience
 
