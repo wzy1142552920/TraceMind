@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T5
-- **状态**：implemented（live BLOCKED：无 Key）
+- **状态**：implemented（live PASS：deepseek-flash）
 - **依赖**：T1–T4
 - **下游**：T6
 
 ## 1. 实施顺序
 
-> T5 已实现；真实 live 仍 BLOCKED（当前无 Key）。以下步骤保留作为复现指南。
+> T5 已实现；live adapter/CLI 已在 deepseek-flash 上通过。以下步骤保留作为复现指南。
 
 1. **确认 spec**
    - 阅读 T5 spec、T1 `.env` loader、T4 repair、T3 usage。
@@ -47,7 +47,7 @@
 
 ## 3. Definition of Done
 
-- [x] AC-T5-01 至 AC-T5-05 满足；无 Key 的 AC 为 BLOCKED。
+- [x] AC-T5-01 至 AC-T5-05 全部满足（live 已运行并记录）。
 - [x] 默认 pytest 不访问网络。
 - [x] live gate 三重条件有效。
 - [x] live adapter/CLI 断言结构/证据/报告/usage。
@@ -66,15 +66,15 @@ TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q
 - **费用/网络**：只人工运行；默认 skip；限制 tokens/iterations。
 - **Key 来源**：环境变量或项目 `.env`；不在聊天中贴 Key。
 - **模型非确定性**：T4 repair；测试允许多种合法工具路径，但要求证据/报告结构。
-- **无 Key**：live AC 标 BLOCKED；不能写成 PASS。
+- **无 Key**：gate 自动 skip；本次 Key 已配置并完成 live，不能把 skip 当 PASS。
 - **CI**：不默认跑 live；后续可手动 workflow。
 
 ## 6. 验证结果（实现后回填）
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| 2026-10-21 | Claude | `uv run pytest -q` | 145 passed；2 skipped | live 默认 skip |
-| 2026-10-21 | Claude | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` | 2 skipped；145 deselected | 无 Key；无网络 |
+| 2026-10-21 | Claude | `uv run pytest -q` | 146 passed；2 skipped | live 默认 skip |
+| 2026-10-21 | Claude | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` | **2 passed**；146 deselected | live 通过 |
 | 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
 | 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 36 source files | — |
-| 2026-10-21 | Claude | live adapter/CLI | BLOCKED | 当前无 `DEEPSEEK_API_KEY` |
+| 2026-10-21 | Claude | 手动 live CLI | exit 0；confirmed；3 类证据；tokens 1119/164/1283；latency 1699ms | deepseek-flash |

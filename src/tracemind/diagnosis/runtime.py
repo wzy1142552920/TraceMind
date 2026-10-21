@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -306,13 +307,18 @@ class DiagnosisRuntime:
             context,
             default_max_output_bytes=budget.max_output_bytes,
         )
+        tool_specs = self._tool_registry.list_tools()
+        tool_name_map: dict[str, str] = {}
+        for spec in tool_specs:
+            tool_name_map[_llm_tool_name(spec.name)] = spec.name
+            tool_name_map[spec.name] = spec.name
         tool_definitions = [
             ToolDefinition(
-                name=spec.name,
+                name=_llm_tool_name(spec.name),
                 description=spec.description,
                 parameters=spec.input_model.model_json_schema(),
             )
-            for spec in self._tool_registry.list_tools()
+            for spec in tool_specs
         ]
 
         def build_messages() -> list[Message]:
@@ -604,9 +610,10 @@ class DiagnosisRuntime:
                         RuntimeState.STOPPED_BUDGET,
                         StopReason.BUDGET_EXHAUSTED,
                     )
+                internal_tool_name = tool_name_map.get(call.name, call.name)
                 request = ToolRequest(
                     tool_call_id=call.id,
-                    tool_name=call.name,
+                    tool_name=internal_tool_name,
                     arguments=call.arguments,
                     run_id=run_id,
                 )
@@ -617,7 +624,7 @@ class DiagnosisRuntime:
                 )
                 record = ToolCallRecord(
                     tool_call_id=call.id,
-                    tool_name=call.name,
+                    tool_name=internal_tool_name,
                     arguments=call.arguments,
                     ok=result.ok,
                     error_code=result.error_code,
@@ -629,7 +636,7 @@ class DiagnosisRuntime:
                     "tool.called",
                     {
                         "tool_call_id": call.id,
-                        "tool_name": call.name,
+                        "tool_name": internal_tool_name,
                         "ok": result.ok,
                         "error_code": result.error_code,
                         "evidence_ids": record.evidence_ids,
@@ -674,6 +681,10 @@ def _find_seed_matches(
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _llm_tool_name(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", name)
 
 
 def _tool_excerpt(data: Any, limit: int = 300) -> str:

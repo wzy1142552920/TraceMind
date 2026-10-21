@@ -1,7 +1,7 @@
 # T5 — Opt-in Live Verification Spec
 
 - **任务 ID**：T5
-- **状态**：implemented（live verification BLOCKED：无 Key）
+- **状态**：implemented（live PASS：deepseek-flash）
 - **依赖**：T1–T4
 - **下游**：T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -77,9 +77,9 @@ run_live = --run-live AND TRACEMIND_LIVE_TESTS=1 AND key non-empty
 |---|---|---|
 | AC-T5-01 | 默认 pytest skip live，不网络 | `uv run pytest -q`；skip 输出 |
 | AC-T5-02 | 仅完整 gate 运行 live | conftest gate tests |
-| AC-T5-03 | live adapter canonical response + usage | `tests/live/test_live_deepseek.py`；当前无 Key → BLOCKED |
-| AC-T5-04 | live CLI 5 产物/schema 0.2/三类证据/usage/无 secret | live CLI test；当前无 Key → BLOCKED |
-| AC-T5-05 | 无 Key 时 BLOCKED，不写 PASS | skip 输出 + ACCEPTANCE 记录 |
+| AC-T5-03 | live adapter canonical response + usage | `tests/live/test_live_deepseek.py`；PASS |
+| AC-T5-04 | live CLI 5 产物/schema 0.2/三类证据/usage/无 secret | live CLI test；PASS |
+| AC-T5-05 | 无 Key 时 BLOCKED，不写 PASS | gate skip 输出 + ACCEPTANCE 记录；PASS |
 
 ## 7. 测试计划
 
@@ -96,7 +96,7 @@ run_live = --run-live AND TRACEMIND_LIVE_TESTS=1 AND key non-empty
 | 模型非确定性 | 可能不调用工具/不 confirmed | T4 repair；失败保留 artifacts；不硬编码答案 |
 | Key 泄漏 | 测试输出/artifacts | 不打印 Key；secret scan |
 | CI 误跑 | 环境变量误设 | 必须 `--run-live` + `TRACEMIND_LIVE_TESTS=1` |
-| 无 Key | 当前规划环境无 Key | 标记 BLOCKED；不得 PASS |
+| 无 Key | 未配置 Key 时无法运行 live | gate 自动 skip；本次已在本地 `.env` 配置并完成 live |
 
 **开放问题**
 
@@ -115,10 +115,11 @@ TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| 2026-10-21 | 默认 `uv run pytest -q` | 145 passed；2 live skipped |
-| 2026-10-21 | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` | 2 skipped（无 Key）；145 deselected；无网络 |
+| 2026-10-21 | 默认 `uv run pytest -q` | 146 passed；2 live skipped |
+| 2026-10-21 | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q` | **2 passed**；146 deselected |
 | 2026-10-21 | `ruff check .` / `mypy src` | 通过；36 个源文件 |
-| 2026-10-21 | live adapter/CLI | **BLOCKED**：当前无 `DEEPSEEK_API_KEY` |
+| 2026-10-21 | live CLI | 退出 0；`confirmed`；三类证据；tokens=1119/164/1283；latency=1699ms |
+| 2026-10-21 | live 工具名 | DeepSeek function name 需 `^[a-zA-Z0-9_-]+$`；已加入安全名映射并验证 |
 | 2026-10-21 | gate | `--run-live` + env flag + Key 三重条件生效 |
 
 ## 11. 变更记录
@@ -127,3 +128,4 @@ TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q
 |---|---|
 | 2026-10-21 | 创建 T5 spec；定义 live marker/gate、adapter/CLI live 测试和 BLOCKED 规则 |
 | 2026-10-21 | T5 实现完成；默认 skip/gate/skip 行为验证；真实 live 待 Key 后运行 |
+| 2026-10-21 | 配置本地 `.env` 后 live 通过；修复 DeepSeek function-name 兼容性 |

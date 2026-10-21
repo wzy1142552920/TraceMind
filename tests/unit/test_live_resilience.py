@@ -109,6 +109,30 @@ def test_text_only_repair_recovers() -> None:
     assert "no_tool_calls" in second_prompt
 
 
+def test_safe_llm_tool_name_maps_to_internal_tool() -> None:
+    provider = ScriptedProvider(
+        [
+            LLMResponse(
+                content="",
+                tool_calls=[
+                    ToolCall(
+                        id="safe_name",
+                        name="code_find_symbol",
+                        arguments={"query": "OrderService.updateStatus"},
+                    )
+                ],
+                finish_reason="tool_calls",
+            )
+        ]
+    )
+
+    result = _run(provider)
+
+    assert result.state is RuntimeState.COMPLETED
+    assert result.tool_calls[0].tool_name == "code.find_symbol"
+    assert result.tool_calls[0].ok is True
+
+
 def test_unknown_tool_repair_recovers() -> None:
     provider = ScriptedProvider(
         [
