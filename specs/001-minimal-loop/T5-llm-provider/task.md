@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T5
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T6
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供后续实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T5 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T5 `spec.md`，确认 canonical 类型、Mock 脚本格式、DeepSeek 映射规则。
@@ -44,25 +44,25 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/llm/__init__.py`
-- [ ] `src/tracemind/llm/messages.py`
-- [ ] `src/tracemind/llm/provider.py`
-- [ ] `src/tracemind/llm/mock.py`
-- [ ] `src/tracemind/llm/deepseek.py`
-- [ ] `src/tracemind/llm/schemas.py`（如需要）
-- [ ] `tests/unit/test_llm_contract.py`
-- [ ] `tests/unit/test_mock_provider.py`
-- [ ] `tests/unit/test_deepseek_provider.py`
-- [ ] `tests/fixtures/mock_responses.json`（测试脚本）
+- [x] `src/tracemind/llm/__init__.py`
+- [x] `src/tracemind/llm/messages.py`
+- [x] `src/tracemind/llm/provider.py`
+- [x] `src/tracemind/llm/mock.py`
+- [x] `src/tracemind/llm/deepseek.py`
+- [x] `src/tracemind/llm/schemas.py`（如需要）
+- [x] `tests/unit/test_llm_contract.py`
+- [x] `tests/unit/test_mock_provider.py`
+- [x] `tests/unit/test_deepseek_provider.py`
+- [x] `tests/fixtures/mock_responses.json`（测试脚本）
 
 ## 3. Definition of Done
 
-- [ ] T5 spec 的 AC-T5-01 至 AC-T5-08 全部满足。
-- [ ] MockProvider 确定性；两次运行结果一致。
-- [ ] DeepSeek adapter 通过 fake client 契约测试，不依赖真实 Key/网络。
-- [ ] 领域层只看到 canonical 类型。
-- [ ] 错误路径（非法 JSON/缺 Key）有清晰错误，不崩溃。
-- [ ] 不引入异步/流式/Claude 实现。
+- [x] T5 spec 的 AC-T5-01 至 AC-T5-08 全部满足。
+- [x] MockProvider 确定性；两次运行结果一致。
+- [x] DeepSeek adapter 通过 fake client 契约测试，不依赖真实 Key/网络。
+- [x] 领域层只看到 canonical 类型。
+- [x] 错误路径（非法 JSON/缺 Key）有清晰错误，不崩溃。
+- [x] 不引入异步/流式/Claude 实现。
 
 ## 4. 验证命令
 
@@ -74,14 +74,18 @@ uv run pytest tests/unit/test_llm_contract.py tests/unit/test_mock_provider.py t
 
 - **中文 Prompt/响应**：DeepSeek 返回中文内容时，content 按原样保留；不假设英文。
 - **tool call arguments**：DeepSeek/OpenAI 可能返回空字符串/None；定义为空 dict 还是错误？建议空字符串→`{}`，非法 JSON→错误。
-- **Mock 脚本耗尽**：建议返回空响应（`tool_calls=[]`），由运行时 no-progress 停止；测试覆盖。
+- **Mock 脚本耗尽**：已实现为返回空响应（`tool_calls=[]`，`finish_reason="stop"`）；测试覆盖。
 - **Provider 错误**：v0.1 只抛 `LLMProviderError`，不实现重试；T6 捕获后终止/记录。
-- **API Key 检查**：构造时检查还是调用时检查？建议调用前检查，便于测试注入 fake client。
-- **同步调用**：v0.1 明确同步；不要为了让接口“看起来统一”引入 async。
+- **API Key 检查**：实现为调用前检查；测试通过 fake client 注入，不读取真实 Key。
+- **同步调用**：v0.1 已明确同步；后续 MCP/并发时再迁移。
 - **usage 字段**：不同 Provider 可能缺失；保持 Optional，不伪造 0。
 
 ## 6. 验证结果（实现后回填）
 
 | 日期 | 执行人 | 命令 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 当前阶段只生成文档 |
+| 2026-10-21 | Claude | `uv run pytest tests/unit/test_mock_provider.py tests/unit/test_deepseek_provider.py tests/unit/test_llm_contract.py -q` | 14 passed | T5 专项 |
+| 2026-10-21 | Claude | `uv run pytest -q` | 79 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 27 source files | — |
+| 2026-10-21 | Claude | Provider 契约 | Mock/DeepSeek 均满足 canonical 契约 | fake client；无真实网络 |

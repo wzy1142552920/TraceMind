@@ -1,7 +1,7 @@
 # T5 — LLM Provider 与 Mock/DeepSeek Spec
 
 - **任务 ID**：T5
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -212,8 +212,19 @@ api_key_env: DEEPSEEK_API_KEY
 uv run pytest tests/unit/test_mock_provider.py tests/unit/test_deepseek_provider.py tests/unit/test_llm_contract.py -q
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令 | 结果 |
+|---|---|---|
+| 2026-10-21 | `uv run pytest tests/unit/test_mock_provider.py tests/unit/test_deepseek_provider.py tests/unit/test_llm_contract.py -q` | 14 passed |
+| 2026-10-21 | `uv run pytest -q` | 79 passed |
+| 2026-10-21 | `uv run ruff check .` | All checks passed |
+| 2026-10-21 | `uv run mypy src` | Success: no issues found in 27 source files |
+| 2026-10-21 | Provider 契约 | Mock/DeepSeek 均返回 canonical `LLMResponse`/`ToolCall`；DeepSeek 测试使用 fake client，无真实网络/Key |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T5 spec；定义 Provider 契约、Mock 脚本、DeepSeek 适配和验收标准 |
+| 2026-10-21 | T5 实现完成；canonical 类型、MockProvider、DeepSeek adapter、契约测试落地 |
