@@ -1,7 +1,7 @@
 # TraceMind v0.2 验收矩阵
 
 - **日期**：2026-10-21
-- **状态**：IN PROGRESS（T1 已实现；T2–T6 planned）
+- **状态**：IN PROGRESS（T1–T2 已实现；T3–T6 planned）
 - **范围**：T1–T6
 - **AC 总数**：40
 - **Live 状态**：规划时未配置 `DEEPSEEK_API_KEY`；live AC 在真实运行前标记 **BLOCKED**，不得标记 PASS
@@ -26,13 +26,13 @@
 
 | AC | 验收标准 | 计划验证 | 状态 |
 |---|---|---|---|
-| AC-T2-01 | 429/5xx 重试最多 2 次，退避 0.5s/1.0s | `tests/unit/test_deepseek_retry.py` | PLANNED |
-| AC-T2-02 | timeout/connection 重试；连续失败后明确失败 | `test_retry_timeout_exhausts` | PLANNED |
-| AC-T2-03 | auth/bad request/invalid arguments 不重试 | `test_auth_not_retried` / `test_invalid_arguments_not_retried` | PLANNED |
-| AC-T2-04 | 错误包含 code/retryable/attempts/status_code/request_id | provider error tests | PLANNED |
-| AC-T2-05 | OpenAI SDK `max_retries=0`，传入配置 timeout | `test_openai_client_configured` | PLANNED |
-| AC-T2-06 | fake-client 重试测试不访问网络 | 测试使用注入 client + 注入 sleep | PLANNED |
-| AC-T2-07 | 成功响应保留 attempts | `test_success_records_attempts` | PLANNED |
+| AC-T2-01 | 429/5xx 重试最多 2 次，退避 0.5s/1.0s | `tests/unit/test_deepseek_retry.py` | PASS |
+| AC-T2-02 | timeout/connection 重试；连续失败后明确失败 | `test_retries_exhausted` | PASS |
+| AC-T2-03 | auth/bad request/invalid arguments 不重试 | `test_auth_error_is_not_retried` / `test_invalid_tool_arguments_are_not_retried` | PASS |
+| AC-T2-04 | 错误包含 code/retryable/attempts/status_code/request_id | provider error tests | PASS |
+| AC-T2-05 | OpenAI SDK `max_retries=0`，传入配置 timeout | `test_openai_client_is_configured_without_sdk_retries` | PASS |
+| AC-T2-06 | fake-client 重试测试不访问网络 | 测试使用注入 client + 注入 sleep | PASS |
+| AC-T2-07 | 成功响应保留 attempts | retry tests `response.attempts` | PASS |
 
 ## 3. T3 — Usage / latency / provenance
 

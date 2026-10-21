@@ -49,6 +49,7 @@ class LLMResponse(BaseModel):
     finish_reason: str | None = None
     usage: Usage | None = None
     raw_provider_id: str | None = None
+    attempts: int = 1
 
 
 @dataclass(frozen=True)

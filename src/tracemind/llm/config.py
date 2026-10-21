@@ -25,7 +25,7 @@ class LLMSettings(BaseModel):
     api_key_env: str = DEFAULT_API_KEY_ENV
     timeout_seconds: float = Field(default=60.0, gt=0)
     max_tokens: int = Field(default=4000, gt=0)
-    max_retries: int = Field(default=2, ge=0, le=5)
+    max_retries: int = Field(default=2, ge=0, le=2)
     repair_attempts: int = Field(default=2, ge=0, le=5)
 
     def public_config(self) -> dict[str, Any]:

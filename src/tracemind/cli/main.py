@@ -164,7 +164,7 @@ def diagnose(
     llm_max_retries: int | None = typer.Option(
         None,
         "--llm-max-retries",
-        help="Maximum transient LLM retries (0-5).",
+        help="Maximum transient LLM retries (0-2).",
     ),
     llm_max_tokens: int | None = typer.Option(
         None,

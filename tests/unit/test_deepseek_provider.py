@@ -168,7 +168,7 @@ def test_deepseek_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_deepseek_empty_response() -> None:
     response = SimpleNamespace(choices=[], usage=None, id="resp_empty")
-    provider = DeepSeekProvider(client=FakeClient(response))
+    provider = DeepSeekProvider(client=FakeClient(response), max_retries=0)
 
     with pytest.raises(LLMProviderError) as exc_info:
         provider.complete([], [])

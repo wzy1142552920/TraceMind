@@ -77,7 +77,7 @@ uv run mypy src
 - **preflight 顺序**：必须在 `LogParser`/`TreeSitterJavaIndex`/`RunStore` 之前。
 - **Secret**：只保存配置名，不保存 Key；测试扫描 run.json/events/report/audit。
 - **Mock**：`--provider mock` 不读取 Key，不要求 `.env`。
-- **数值校验**：timeout > 0、max_tokens > 0、retries/repair 0..5。
+- **数值校验**：timeout > 0、max_tokens > 0、max_retries 0..2、repair 0..5。
 
 ## 6. 验证结果（实现后回填）
 

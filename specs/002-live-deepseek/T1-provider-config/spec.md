@@ -60,7 +60,7 @@ v0.1 的 `DeepSeekProvider` 使用硬编码默认值，CLI 没有 Key preflight�
 | `repair_attempts` | `2` | `TRACEMIND_MAX_REPAIR_ATTEMPTS` | `--max-repair-attempts` |
 | `api_key_env` | `DEEPSEEK_API_KEY` | 固定 | 不暴露 |
 
-- 数值校验：timeout > 0；max_tokens > 0；max_retries 0..5；repair_attempts 0..5。
+- 数值校验：timeout > 0；max_tokens > 0；max_retries 0..2；repair_attempts 0..5。
 - `resolve_settings(cli_overrides)`：CLI 显式值优先；否则读环境变量；`.env` 已合并到环境；否则默认。
 
 ### `.env` 加载

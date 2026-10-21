@@ -1,7 +1,7 @@
 # T2 — DeepSeek Transport Hardening Spec
 
 - **任务 ID**：T2
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T3、T4、T5、T6
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -141,8 +141,20 @@ uv run ruff check .
 uv run mypy src
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令/检查 | 结果 |
+|---|---|---|
+| 2026-10-21 | T2 专项 `pytest`（retry/provider） | 21 passed |
+| 2026-10-21 | 全量 `pytest` | 137 passed |
+| 2026-10-21 | `ruff check .` / `mypy src` | 通过；36 个源文件 |
+| 2026-10-21 | 重试/错误分类 | 429/5xx/timeout/connection/empty 可重试；auth/bad/invalid 不重试 |
+| 2026-10-21 | SDK 配置 | `max_retries=0`；timeout 来自配置 |
+| 2026-10-21 | 测试网络 | fake client + 注入 sleep；无真实网络 |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T2 spec；定义错误分类、有限重试、SDK 重试控制和测试 |
+| 2026-10-21 | T2 实现完成；错误元数据、有限重试、attempts、SDK 重试关闭测试通过 |
