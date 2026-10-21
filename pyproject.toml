@@ -12,6 +12,7 @@ dependencies = [
     "tree-sitter-java",
     "openai",
     "jinja2",
+    "python-dotenv",
 ]
 
 [project.scripts]

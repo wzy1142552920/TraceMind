@@ -31,6 +31,7 @@ class DeepSeekProvider:
         temperature: float = 0.2,
         max_tokens: int = 4000,
         timeout: float = 60.0,
+        max_retries: int = 2,
         client: Any | None = None,
     ) -> None:
         self._model = model
@@ -39,6 +40,7 @@ class DeepSeekProvider:
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._timeout = timeout
+        self._max_retries = max_retries
         self._client = client
 
     @property

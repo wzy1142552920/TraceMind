@@ -13,3 +13,7 @@ class LogParseError(TraceMindError):
 
 class JavaIndexError(TraceMindError):
     """Raised when a Java repository cannot be indexed or queried."""
+
+
+class LLMConfigError(TraceMindError):
+    """Raised when LLM configuration or credentials are invalid."""

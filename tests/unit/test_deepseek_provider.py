@@ -90,6 +90,23 @@ def test_deepseek_maps_messages_tools_and_tool_calls() -> None:
     ]
 
 
+def test_deepseek_uses_configured_model_and_tokens() -> None:
+    client = FakeClient(_response())
+    provider = DeepSeekProvider(
+        model="custom-model",
+        max_tokens=123,
+        timeout=5,
+        max_retries=1,
+        client=client,
+    )
+
+    provider.complete([Message(role="user", content="diagnose")], [])
+
+    call = client.completions.calls[0]
+    assert call["model"] == "custom-model"
+    assert call["max_tokens"] == 123
+
+
 def test_deepseek_omits_tools_when_empty() -> None:
     client = FakeClient(_response())
     provider = DeepSeekProvider(client=client)

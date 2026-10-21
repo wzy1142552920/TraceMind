@@ -10,12 +10,18 @@ import typer
 from rich.console import Console
 
 from tracemind import __version__
-from tracemind.core.errors import JavaIndexError, LogParseError
+from tracemind.core.errors import JavaIndexError, LLMConfigError, LogParseError
 from tracemind.diagnosis.budget import Budget
 from tracemind.diagnosis.report import build_report
 from tracemind.diagnosis.runtime import DiagnosisRuntime
 from tracemind.diagnosis.state import RuntimeState
 from tracemind.indexing.java_index import TreeSitterJavaIndex
+from tracemind.llm.config import (
+    LLMSettings,
+    load_project_env,
+    require_api_key,
+    resolve_settings,
+)
 from tracemind.llm.deepseek import DeepSeekProvider
 from tracemind.llm.mock import MockProvider
 from tracemind.llm.provider import LLMProvider, LLMProviderError
@@ -45,6 +51,7 @@ def _fail(message: str, code: int = 1) -> NoReturn:
 def _build_provider(
     provider_name: str,
     mock_script: Path | None,
+    settings: LLMSettings | None,
 ) -> tuple[LLMProvider, str]:
     if provider_name == "mock":
         script = mock_script or Path("fixtures/mock/basic_plan.json")
@@ -53,7 +60,19 @@ def _build_provider(
         except LLMProviderError as exc:
             _fail(f"mock provider error: {exc}", code=1)
     if provider_name == "deepseek":
-        return DeepSeekProvider(), "deepseek-chat"
+        if settings is None:
+            _fail("DeepSeek settings are unavailable", code=2)
+        return (
+            DeepSeekProvider(
+                model=settings.model,
+                base_url=settings.base_url,
+                api_key_env=settings.api_key_env,
+                max_tokens=settings.max_tokens,
+                timeout=settings.timeout_seconds,
+                max_retries=settings.max_retries,
+            ),
+            settings.model,
+        )
     _fail(f"unsupported provider: {provider_name}", code=2)
 
 
@@ -127,6 +146,36 @@ def diagnose(
         "--max-tool-calls",
         help="Maximum tool calls.",
     ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="LLM model override (default: deepseek-chat).",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="OpenAI-compatible base URL override.",
+    ),
+    llm_timeout: float | None = typer.Option(
+        None,
+        "--llm-timeout",
+        help="Per-request LLM timeout in seconds.",
+    ),
+    llm_max_retries: int | None = typer.Option(
+        None,
+        "--llm-max-retries",
+        help="Maximum transient LLM retries (0-5).",
+    ),
+    llm_max_tokens: int | None = typer.Option(
+        None,
+        "--llm-max-tokens",
+        help="Maximum completion tokens.",
+    ),
+    max_repair_attempts: int | None = typer.Option(
+        None,
+        "--max-repair-attempts",
+        help="Maximum plan repair attempts (0-5).",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -135,7 +184,24 @@ def diagnose(
 ) -> None:
     """Diagnose a Java incident from a log file and a local repository."""
     provider_name = provider.lower()
-    llm, model = _build_provider(provider_name, mock_script)
+    settings: LLMSettings | None = None
+
+    if provider_name == "deepseek":
+        try:
+            load_project_env()
+            settings = resolve_settings(
+                model=model,
+                base_url=base_url,
+                timeout=llm_timeout,
+                max_tokens=llm_max_tokens,
+                max_retries=llm_max_retries,
+                repair_attempts=max_repair_attempts,
+            )
+            require_api_key(settings)
+        except LLMConfigError as exc:
+            _fail(str(exc), code=2)
+
+    llm, model_label = _build_provider(provider_name, mock_script, settings)
 
     try:
         parsed_log = LogParser().parse(log)
@@ -175,7 +241,16 @@ def diagnose(
             "incident_id": result.incident_id,
             "service": result.service,
             "provider": provider_name,
-            "model": model,
+            "model": model_label,
+            "llm": {
+                "provider": provider_name,
+                "model": model_label,
+                **(
+                    settings.public_config()
+                    if settings is not None
+                    else {}
+                ),
+            },
             "log_path": str(log),
             "repo_path": str(repo),
             "state": result.state.value,
@@ -199,6 +274,8 @@ def diagnose(
             "run_id": result.run_id,
             "incident_id": result.incident_id,
             "status": report.status,
+            "provider": provider_name,
+            "model": model_label,
             "stop_reason": result.stop_reason.value,
             "evidence_count": len(result.evidence),
             "tool_calls": len(result.tool_calls),

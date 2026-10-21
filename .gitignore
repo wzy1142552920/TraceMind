@@ -18,3 +18,4 @@ htmlcov/
 # Secrets
 .env
 .env.*
+!.env.example
