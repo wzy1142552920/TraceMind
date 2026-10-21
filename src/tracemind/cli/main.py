@@ -149,7 +149,7 @@ def diagnose(
     model: str | None = typer.Option(
         None,
         "--model",
-        help="LLM model override (default: deepseek-chat).",
+        help="LLM model override (default: deepseek-flash).",
     ),
     base_url: str | None = typer.Option(
         None,

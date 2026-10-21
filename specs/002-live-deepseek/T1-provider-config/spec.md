@@ -52,7 +52,7 @@ v0.1 的 `DeepSeekProvider` 使用硬编码默认值，CLI 没有 Key preflight�
 
 | 字段 | 默认 | 环境变量 | CLI |
 |---|---|---|---|
-| `model` | `deepseek-chat` | `TRACEMIND_LLM_MODEL` | `--model` |
+| `model` | `deepseek-flash` | `TRACEMIND_LLM_MODEL` | `--model` |
 | `base_url` | `https://api.deepseek.com` | `TRACEMIND_LLM_BASE_URL` | `--base-url` |
 | `timeout_seconds` | `60` | `TRACEMIND_LLM_TIMEOUT` | `--llm-timeout` |
 | `max_tokens` | `4000` | `TRACEMIND_LLM_MAX_TOKENS` | `--llm-max-tokens` |
@@ -72,7 +72,7 @@ def load_project_env() -> None:
 
 - 使用 `python-dotenv` 的 `find_dotenv/load_dotenv(override=False)`。
 - 不打印 `.env` 内容或 Key。
-- `.env.example` 只包含 `DEEPSEEK_API_KEY=` 占位符和可选 `TRACEMIND_LLM_MODEL=deepseek-chat`。
+- `.env.example` 只包含 `DEEPSEEK_API_KEY=` 占位符和可选 `TRACEMIND_LLM_MODEL=deepseek-flash`。
 - `.gitignore` 保留 `.env`/`.env.*`，增加 `!.env.example`。
 
 ### preflight
@@ -96,7 +96,7 @@ run.json 增加脱敏配置：
 {
   "llm": {
     "provider": "deepseek",
-    "model": "deepseek-chat",
+    "model": "deepseek-flash",
     "base_url": "https://api.deepseek.com",
     "timeout_seconds": 60,
     "max_tokens": 4000,
@@ -106,6 +106,18 @@ run.json 增加脱敏配置：
 ```
 
 不得包含 `api_key`、`DEEPSEEK_API_KEY` 的值或 `sk-` 字符串。
+
+### Thinking
+
+v0.2 的 Planner 默认关闭 DeepSeek thinking，请求体带：
+
+```json
+{"extra_body": {"thinking": {"type": "disabled"}}}
+```
+
+- 默认模型 `deepseek-flash`；可通过 `--model`/`TRACEMIND_LLM_MODEL` 覆盖。
+- `DeepSeekProvider(thinking_enabled=False)` 为默认；`thinking_enabled=True` 保留给未来/测试，不暴露 CLI。
+- thinking 模式下的 `reasoning_content` 不进入证据或报告。
 
 ## 6. 验收标准
 
@@ -175,12 +187,13 @@ uv run mypy src
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| 2026-10-21 | T1 专项 `pytest`（config/preflight/provider） | 19 passed |
-| 2026-10-21 | 全量 `pytest` | 124 passed |
+| 2026-10-21 | T1 专项 `pytest`（config/preflight/provider） | 21 passed |
+| 2026-10-21 | 全量 `pytest` | 126 passed |
 | 2026-10-21 | `ruff check .` / `mypy src` | 通过；36 个源文件 |
 | 2026-10-21 | `--provider deepseek` 无 Key | 退出 2；无输出目录；提示 `.env`/环境变量 |
 | 2026-10-21 | `.env`/`.env.example` | `.env` ignored；`.env.example` unignored（提交后 tracked） |
 | 2026-10-21 | run.json | Mock E2E 含脱敏 `llm` 块；无 Key/`sk-` |
+| 2026-10-21 | 默认模型/thinking | `deepseek-flash`；请求带 `thinking: disabled`；thinking 可显式启用 |
 
 ## 11. 变更记录
 

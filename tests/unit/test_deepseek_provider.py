@@ -76,7 +76,7 @@ def test_deepseek_maps_messages_tools_and_tool_calls() -> None:
     assert result.raw_provider_id == "resp_1"
 
     call = client.completions.calls[0]
-    assert call["model"] == "deepseek-chat"
+    assert call["model"] == "deepseek-flash"
     assert call["messages"] == [{"role": "user", "content": "diagnose"}]
     assert call["tools"] == [
         {
@@ -88,6 +88,26 @@ def test_deepseek_maps_messages_tools_and_tool_calls() -> None:
             },
         }
     ]
+
+
+def test_deepseek_disables_thinking_by_default() -> None:
+    client = FakeClient(_response())
+    provider = DeepSeekProvider(client=client)
+
+    provider.complete([], [])
+
+    call = client.completions.calls[0]
+    assert call["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_deepseek_can_enable_thinking() -> None:
+    client = FakeClient(_response())
+    provider = DeepSeekProvider(client=client, thinking_enabled=True)
+
+    provider.complete([], [])
+
+    call = client.completions.calls[0]
+    assert "extra_body" not in call
 
 
 def test_deepseek_uses_configured_model_and_tokens() -> None:

@@ -55,7 +55,8 @@ CLI 参数 > 真实环境变量 > 项目根 .env > 默认值
 
 | 设置 | 默认 |
 |---|---|
-| model | `deepseek-chat` |
+| model | `deepseek-flash` |
+| thinking | `disabled`（Planner 默认） |
 | base URL | `https://api.deepseek.com` |
 | timeout | 60s |
 | max tokens | 4000 |

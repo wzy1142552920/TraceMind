@@ -77,7 +77,7 @@ uv run tracemind diagnose \
   --provider deepseek
 ```
 
-live 运行不进入自动化验收；CI 和 Demo 默认使用 Mock。
+默认模型是 `deepseek-flash`，Planner 默认关闭 thinking；可用 `--model` 或 `TRACEMIND_LLM_MODEL` 覆盖。live 运行不进入自动化验收；CI 和 Demo 默认使用 Mock。
 
 ## CLI
 

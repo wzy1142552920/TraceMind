@@ -17,7 +17,7 @@
 | AC-T1-02 | 真实环境变量优先于 `.env` | `test_real_env_wins_over_dotenv` | PASS |
 | AC-T1-03 | CLI 参数优先于环境变量/`.env` | `test_cli_overrides_env` | PASS |
 | AC-T1-04 | 缺 Key 在解析/索引/建目录前 preflight，退出 2，提示 `.env`/环境变量 | `tests/e2e/test_live_preflight.py` | PASS |
-| AC-T1-05 | DeepSeek 使用配置的 model/base URL/timeout/max tokens/max retries | `test_deepseek_uses_configured_model_and_tokens` | PASS |
+| AC-T1-05 | DeepSeek 使用配置的 model/base URL/timeout/max tokens/max retries；默认 `deepseek-flash` + thinking disabled | `test_deepseek_uses_configured_model_and_tokens` / thinking tests | PASS |
 | AC-T1-06 | run.json 记录脱敏配置，不含 Key/`sk-` | Mock E2E run.json / `public_config` 测试 | PASS |
 | AC-T1-07 | Mock 路径行为不变 | 全量离线测试 / E2E | PASS |
 | AC-T1-08 | `.env` 被忽略，`.env.example` 被跟踪 | `.env` ignored；`.env.example` unignored | PASS（提交后 tracked） |

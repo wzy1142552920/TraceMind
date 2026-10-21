@@ -83,9 +83,10 @@ uv run mypy src
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| 2026-10-21 | Claude | T1 专项 pytest | 19 passed | config/preflight/provider |
-| 2026-10-21 | Claude | `uv run pytest -q` | 124 passed | 全量 |
+| 2026-10-21 | Claude | T1 专项 pytest | 21 passed | config/preflight/provider |
+| 2026-10-21 | Claude | `uv run pytest -q` | 126 passed | 全量 |
 | 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
 | 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 36 source files | — |
 | 2026-10-21 | Claude | 无 Key deepseek CLI | 退出 2；无输出目录 | 提示 `.env`/环境变量 |
 | 2026-10-21 | Claude | `.env` ignore 检查 | `.env` ignored；`.env.example` unignored | 提交后 tracked |
+| 2026-10-21 | Claude | 默认模型/thinking | `deepseek-flash` + thinking disabled | provider tests |

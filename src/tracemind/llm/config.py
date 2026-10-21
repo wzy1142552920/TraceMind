@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from tracemind.core.errors import LLMConfigError
 
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-flash"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_API_KEY_ENV = "DEEPSEEK_API_KEY"
 

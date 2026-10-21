@@ -19,7 +19,7 @@ from tracemind.llm.config import (
 def test_default_settings() -> None:
     settings = resolve_settings({})
 
-    assert settings.model == "deepseek-chat"
+    assert settings.model == "deepseek-flash"
     assert settings.base_url == "https://api.deepseek.com"
     assert settings.timeout_seconds == 60.0
     assert settings.max_tokens == 4000

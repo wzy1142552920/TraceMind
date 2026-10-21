@@ -25,13 +25,14 @@ class DeepSeekProvider:
     def __init__(
         self,
         *,
-        model: str = "deepseek-chat",
+        model: str = "deepseek-flash",
         base_url: str = "https://api.deepseek.com",
         api_key_env: str = "DEEPSEEK_API_KEY",
         temperature: float = 0.2,
         max_tokens: int = 4000,
         timeout: float = 60.0,
         max_retries: int = 2,
+        thinking_enabled: bool = False,
         client: Any | None = None,
     ) -> None:
         self._model = model
@@ -41,6 +42,7 @@ class DeepSeekProvider:
         self._max_tokens = max_tokens
         self._timeout = timeout
         self._max_retries = max_retries
+        self._thinking_enabled = thinking_enabled
         self._client = client
 
     @property
@@ -65,6 +67,8 @@ class DeepSeekProvider:
         }
         if tools:
             payload["tools"] = [_tool_to_dict(tool) for tool in tools]
+        if not self._thinking_enabled:
+            payload["extra_body"] = {"thinking": {"type": "disabled"}}
 
         try:
             response = client.chat.completions.create(**payload)
