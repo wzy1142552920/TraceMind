@@ -1,7 +1,7 @@
 # T4 — Tool 层 Spec
 
 - **任务 ID**：T4
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1、T2、T3
 - **下游**：T6、T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -211,8 +211,19 @@ Agent 不能直接读文件或执行任意命令。它只能通过注册过的�
 uv run pytest tests/unit/test_tool_executor.py tests/unit/test_tool_registry.py -q
 ```
 
-## 10. 变更记录
+## 10. 实现验证结果
+
+| 日期 | 命令 | 结果 |
+|---|---|---|
+| 2026-10-21 | `uv run pytest tests/unit/test_tool_executor.py tests/unit/test_tool_registry.py -q` | 17 passed |
+| 2026-10-21 | `uv run pytest -q` | 65 passed |
+| 2026-10-21 | `uv run ruff check .` | All checks passed |
+| 2026-10-21 | `uv run mypy src` | Success: no issues found in 22 source files |
+| 2026-10-21 | 安全用例 | 路径穿越、绝对路径、符号链接逃逸均返回 `TARGET_DENIED` |
+
+## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-21 | 创建 T4 spec；定义工具契约、路径安全、去重、审计和验收标准 |
+| 2026-10-21 | T4 实现完成；四个本地工具、Registry/Executor、去重/输出限制/审计/路径安全测试通过 |

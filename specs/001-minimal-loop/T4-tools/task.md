@@ -2,13 +2,13 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T4
-- **状态**：draft
+- **状态**：implemented
 - **依赖**：T1、T2、T3
 - **下游**：T6、T7
 
 ## 1. 实施顺序
 
-> 当前阶段只生成文档；以下步骤供后续实现会话执行。严格按“spec → 测试 → 实现 → 验证”的顺序。
+> T4 已实现；以下步骤保留作为复现指南。严格按“spec → 测试 → 实现 → 验证”的顺序。
 
 1. **确认 spec**
    - 阅读 T4 `spec.md`，确认四个工具的参数/返回、错误码、路径规则。
@@ -46,23 +46,23 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/tools/contracts.py`
-- [ ] `src/tracemind/tools/registry.py`
-- [ ] `src/tracemind/tools/executor.py`
-- [ ] `src/tracemind/tools/builtin.py`
-- [ ] `src/tracemind/workspace/paths.py`
-- [ ] `src/tracemind/tools/__init__.py`、`src/tracemind/workspace/__init__.py`
-- [ ] `tests/unit/test_tool_executor.py`
-- [ ] `tests/unit/test_tool_registry.py`
+- [x] `src/tracemind/tools/contracts.py`
+- [x] `src/tracemind/tools/registry.py`
+- [x] `src/tracemind/tools/executor.py`
+- [x] `src/tracemind/tools/builtin.py`
+- [x] `src/tracemind/workspace/paths.py`
+- [x] `src/tracemind/tools/__init__.py`、`src/tracemind/workspace/__init__.py`
+- [x] `tests/unit/test_tool_executor.py`
+- [x] `tests/unit/test_tool_registry.py`
 
 ## 3. Definition of Done
 
-- [ ] T4 spec 的 AC-T4-01 至 AC-T4-11 全部满足。
-- [ ] Runtime 只能通过 ToolExecutor 调用工具；没有直接文件读取旁路。
-- [ ] 路径穿越/绝对路径/符号链接逃逸全部拒绝。
-- [ ] 重复调用不重复执行，返回 `DUPLICATE_CALL`。
-- [ ] 每次调用有审计事件；输出有上限/`truncated`。
-- [ ] 不依赖 LLM/网络/写操作。
+- [x] T4 spec 的 AC-T4-01 至 AC-T4-11 全部满足。
+- [x] Runtime 只能通过 ToolExecutor 调用工具；没有直接文件读取旁路。
+- [x] 路径穿越/绝对路径/符号链接逃逸全部拒绝。
+- [x] 重复调用不重复执行，返回 `DUPLICATE_CALL`。
+- [x] 每次调用有审计事件；输出有上限/`truncated`。
+- [x] 不依赖 LLM/网络/写操作。
 
 ## 4. 验证命令
 
@@ -84,4 +84,8 @@ uv run pytest tests/unit/test_tool_executor.py tests/unit/test_tool_registry.py 
 
 | 日期 | 执行人 | 命令 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | — | 未执行 | 当前阶段只生成文档 |
+| 2026-10-21 | Claude | `uv run pytest tests/unit/test_tool_executor.py tests/unit/test_tool_registry.py -q` | 17 passed | T4 专项 |
+| 2026-10-21 | Claude | `uv run pytest -q` | 65 passed | 全量 |
+| 2026-10-21 | Claude | `uv run ruff check .` | All checks passed | — |
+| 2026-10-21 | Claude | `uv run mypy src` | Success: no issues found in 22 source files | — |
+| 2026-10-21 | Claude | 安全用例 | 路径穿越/绝对路径/符号链接逃逸均被拒绝 | `TARGET_DENIED` |
