@@ -1,6 +1,6 @@
 # TraceMind v0.3 — 证据落地的自主鉴别诊断 SDD
 
-- **状态**：PLANNED
+- **状态**：IMPLEMENTED（T1–T7，2026-10-22）
 - **日期**：2026-10-22
 - **父设计**：[TraceMind v2.0](../../docs/TraceMind_Agent_System_Design_v2.md)
 - **上一版本**：[v0.2 live DeepSeek](../002-live-deepseek/README.md)
@@ -100,13 +100,13 @@ v0.3 把 TraceMind 从“异常定位器”升级为“证据落地的自主鉴�
 
 | ID | 任务 | 依赖 | 状态 | Spec | Task |
 |---|---|---|---|---|---|
-| T1 | 证据账本与假设协议 | — | planned | [spec](./T1-evidence-hypothesis-protocol/spec.md) | [task](./T1-evidence-hypothesis-protocol/task.md) |
-| T2 | 代码流索引与工具 | T1 | planned | [spec](./T2-code-flow-index/spec.md) | [task](./T2-code-flow-index/task.md) |
-| T3 | 只读验证工具契约 | T1 | planned | [spec](./T3-verification-tools/spec.md) | [task](./T3-verification-tools/task.md) |
-| T4 | 鉴别诊断运行时 | T1、T2、T3 | planned | [spec](./T4-differential-runtime/spec.md) | [task](./T4-differential-runtime/task.md) |
-| T5 | 结构化修复与报告 0.3 | T4 | planned | [spec](./T5-remediation-report/spec.md) | [task](./T5-remediation-report/task.md) |
-| T6 | 三 case 与 pytest 评测 | T1–T5 | planned | [spec](./T6-cases-eval/spec.md) | [task](./T6-cases-eval/task.md) |
-| T7 | Live 验证、文档与发布 | T6 | planned | [spec](./T7-live-docs-release/spec.md) | [task](./T7-live-docs-release/task.md) |
+| T1 | 证据账本与假设协议 | — | implemented | [spec](./T1-evidence-hypothesis-protocol/spec.md) | [task](./T1-evidence-hypothesis-protocol/task.md) |
+| T2 | 代码流索引与工具 | T1 | implemented | [spec](./T2-code-flow-index/spec.md) | [task](./T2-code-flow-index/task.md) |
+| T3 | 只读验证工具契约 | T1 | implemented | [spec](./T3-verification-tools/spec.md) | [task](./T3-verification-tools/task.md) |
+| T4 | 鉴别诊断运行时 | T1、T2、T3 | implemented | [spec](./T4-differential-runtime/spec.md) | [task](./T4-differential-runtime/task.md) |
+| T5 | 结构化修复与报告 0.3 | T4 | implemented | [spec](./T5-remediation-report/spec.md) | [task](./T5-remediation-report/task.md) |
+| T6 | 三 case 与 pytest 评测 | T1–T5 | implemented | [spec](./T6-cases-eval/spec.md) | [task](./T6-cases-eval/task.md) |
+| T7 | Live 验证、文档与发布 | T6 | implemented | [spec](./T7-live-docs-release/spec.md) | [task](./T7-live-docs-release/task.md) |
 
 **执行顺序**：
 
@@ -139,6 +139,8 @@ T2 与 T3 可以在 T1 完成后并行；T4 需要两者都完成。T5 之后才
 - T1 定义证据类工具的公共元数据字段：`hypothesis_id`、`requirement_id`。
 - 只有绑定了 requirement 的工具证据才能满足验证要求。
 - 未绑定证据可以成为后续假设的 basis，但不会被计入确认覆盖。
+- 一个真实工具事实可以有多个绑定，复用到其他 hypothesis/requirement，不重复复制证据或工具调用。
+- assessment 按条校验；合法条目在部分失败批次中保留，同一目标重评修订旧 verdict。
 - 控制工具输入可用 `evidence_id` 或 `source_ref`；runtime 统一解析为 evidence_id 并校验唯一性/关联性。
 - 所有调用经过 ToolExecutor，记录参数 hash、绑定、结果、耗时和错误。
 
@@ -168,6 +170,8 @@ T2 与 T3 可以在 T1 完成后并行；T4 需要两者都完成。T5 之后才
 - 只有 `--run-live`、`TRACEMIND_LIVE_TESTS=1` 和 Key 三者同时满足才运行 live。
 - live 目标：三 case 报告结构合法、引用有效、修复接地；Top-1 ≥ 2/3、Top-3 3/3。
 - 未达标必须记录为 FAIL/BLOCKED，不能写成通过。
+- 2026-10-22 实际 gate：4 passed in 65.38s；三 case confirmed，Top-1 3/3、Top-3 3/3、同线程上下文 3/3、代码证据 3/3。
+- live 预算为 16 iterations / 18 LLM calls / 24 tool calls / 2000 output tokens。
 - live 结果受 DeepSeek 模型版本和网络影响；不宣称生产准确率。
 
 ## 6. 验收
@@ -196,3 +200,8 @@ v0.3 完成时至少满足：
 | 日期 | 变更 |
 |---|---|
 | 2026-10-22 | 创建 v0.3 SDD：无 catalog、LLM 自主规划、动态证据契约、Fake 验证、三 case、T1–T7 拆分 |
+| 2026-10-22 | T1–T3 implemented：证据/假设协议、代码流索引与工具、只读验证工具 |
+| 2026-10-22 | T4 implemented：grounded 多假设运行时、同线程上下文、确定性证据映射与 repair；Mock happy path 迁移；T5 待实现 |
+| 2026-10-22 | T5 implemented：REPORTING 单次 remediation 调用、证据/假设/target 校验、报告 schema 0.3、引用与 fixture 标注校验；全量离线测试通过 |
+| 2026-10-22 | T6 implemented：三 case 离线确认、同线程上下文与代码证据互证、负向/安全/防过拟合测试；Top-1 3/3、引用 100%、接地 100%、越权 0；49 项 T6 测试通过 |
+| 2026-10-22 | T7 implemented：live 三 case 全部 confirmed（Top-1 3/3、Top-3 3/3），CLI 冒烟成功；证据多绑定/复用、assessment 修订/部分接受、prompt 正文暴露和 remediation allowed evidence 已回填；版本 0.3.0；最终离线 385 passed, 6 skipped |

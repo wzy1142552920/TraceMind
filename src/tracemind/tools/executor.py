@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from tracemind.diagnosis.workspace import ProtocolError
 from tracemind.tools.contracts import (
     AuditEvent,
     ToolContext,
@@ -61,6 +62,43 @@ class ToolExecutor:
                 "invalid_arguments",
             )
 
+        bound_hypothesis_id = getattr(args, "hypothesis_id", None)
+        bound_requirement_id = getattr(args, "requirement_id", None)
+        if (
+            bound_hypothesis_id is not None
+            or bound_requirement_id is not None
+        ):
+            workspace = self._context.workspace
+            if workspace is None:
+                return self._error(
+                    request,
+                    ToolErrorCode.INVALID_BINDING,
+                    "binding metadata requires a diagnosis workspace",
+                    started,
+                    _hash_args(args.model_dump()),
+                    "error",
+                    bound_hypothesis_id,
+                    bound_requirement_id,
+                )
+            try:
+                bound_hypothesis_id, bound_requirement_id = (
+                    workspace.validate_binding(
+                        bound_hypothesis_id,
+                        bound_requirement_id,
+                    )
+                )
+            except ProtocolError as exc:
+                return self._error(
+                    request,
+                    ToolErrorCode(exc.code),
+                    exc.message,
+                    started,
+                    _hash_args(args.model_dump()),
+                    "error",
+                    bound_hypothesis_id,
+                    bound_requirement_id,
+                )
+
         args_hash = _hash_args(args.model_dump())
         dedup_key = (request.tool_name, args_hash)
         if dedup_key in self._seen:
@@ -71,6 +109,8 @@ class ToolExecutor:
                 started,
                 args_hash,
                 "duplicate",
+                bound_hypothesis_id,
+                bound_requirement_id,
             )
         self._seen.add(dedup_key)
 
@@ -85,6 +125,8 @@ class ToolExecutor:
                 started,
                 args_hash,
                 outcome,
+                bound_hypothesis_id,
+                bound_requirement_id,
             )
         except Exception as exc:  # keep one bad tool from killing the loop
             return self._error(
@@ -94,6 +136,8 @@ class ToolExecutor:
                 started,
                 args_hash,
                 "error",
+                bound_hypothesis_id,
+                bound_requirement_id,
             )
 
         limit = registered.spec.max_output_bytes or self._default_max_output_bytes
@@ -105,6 +149,8 @@ class ToolExecutor:
             tool_name=request.tool_name,
             data=data,
             source_ref=handler_result.source_ref,
+            bound_hypothesis_id=bound_hypothesis_id,
+            bound_requirement_id=bound_requirement_id,
             duration_ms=duration_ms,
             truncated=truncated,
         )
@@ -115,6 +161,8 @@ class ToolExecutor:
             None,
             duration_ms,
             handler_result.source_ref,
+            bound_hypothesis_id,
+            bound_requirement_id,
         )
         return result
 
@@ -126,14 +174,27 @@ class ToolExecutor:
         started: float,
         args_hash: str,
         outcome: str,
+        bound_hypothesis_id: str | None = None,
+        bound_requirement_id: str | None = None,
     ) -> ToolResult:
         duration_ms = _duration_ms(started)
-        self._audit(request, args_hash, outcome, code.value, duration_ms, None)
+        self._audit(
+            request,
+            args_hash,
+            outcome,
+            code.value,
+            duration_ms,
+            None,
+            bound_hypothesis_id,
+            bound_requirement_id,
+        )
         return ToolResult(
             ok=False,
             tool_name=request.tool_name,
             error_code=code.value,
             error_message=message[:500],
+            bound_hypothesis_id=bound_hypothesis_id,
+            bound_requirement_id=bound_requirement_id,
             duration_ms=duration_ms,
         )
 
@@ -145,6 +206,8 @@ class ToolExecutor:
         error_code: str | None,
         duration_ms: int,
         source_ref: str | None,
+        bound_hypothesis_id: str | None = None,
+        bound_requirement_id: str | None = None,
     ) -> None:
         self.audit_events.append(
             AuditEvent(
@@ -157,6 +220,8 @@ class ToolExecutor:
                 error_code=error_code,
                 duration_ms=duration_ms,
                 source_ref=source_ref,
+                bound_hypothesis_id=bound_hypothesis_id,
+                bound_requirement_id=bound_requirement_id,
             )
         )
 

@@ -1,6 +1,6 @@
 # TraceMind v0.3 跨任务设计
 
-- **状态**：PLANNED
+- **状态**：IMPLEMENTED（v0.3.0，2026-10-22）
 - **日期**：2026-10-22
 - **父设计**：[TraceMind v2.0](../../docs/TraceMind_Agent_System_Design_v2.md)
 - **SDD 索引**：[README](./README.md)
@@ -130,6 +130,7 @@ class Evidence(BaseModel):
     independence_group: str | None = None
     bound_hypothesis_id: str | None = None
     bound_requirement_id: str | None = None
+    bindings: list[EvidenceBinding] = []
     content: dict[str, Any] = {}
 ```
 
@@ -139,7 +140,9 @@ class Evidence(BaseModel):
 2. `content` 只保存脱敏、截断后的结构化结果；报告只引用摘要和 source_ref。
 3. `independence_group` 默认 `f"{kind}:{source_ref}"`；同一来源的重复证据只计一次。
 4. `tool_call_id` 非空表示证据经工具读取/绑定；`provenance` 仍表示原始产生者。确认门槛至少要求一条此类证据。
-5. `bound_*` 来自工具调用元数据；未绑定证据只能作为假设 basis，不能用于满足 requirement。
+5. `bound_*` 保存首个绑定，`bindings[]` 保存全部绑定；同一事实可以服务多个 hypothesis/requirement。
+6. 未绑定证据只能作为假设 basis；需要先绑定（工具元数据或评估时复用）才能满足 requirement。
+7. 评估时可自动复用已绑定、同 source_ref、kind 匹配的工具证据到新 requirement，不复制证据、不篡改 provenance。
 
 ### 3.3 source_ref 约定
 
@@ -166,7 +169,7 @@ INGESTING 结束后，runtime 创建：
 3. 主事件中 in-project 栈帧的 `stack_frame` 证据（strong）。
 4. 最上层 in-project 栈帧解析到的源码范围的 `source_code` 证据（strong，provenance=ast_index）。
 
-这四类证据是 LLM 初始假设的合法 basis。后续代码流和验证证据由工具产生。初始 `log_thread_context` 未绑定；LLM 需要调用 `logs.get_thread_context` 将该上下文绑定到假设的 requirement 并评估，才能计入确认门槛。
+这四类证据是 LLM 初始假设的合法 basis。后续代码流和验证证据由工具产生。初始 `log_thread_context` 未绑定；LLM 需要调用 `logs.get_thread_context` 将该上下文绑定到假设的 requirement 并评估，才能计入确认门槛。若同一事实对多个 requirement 都有解释力，可复用已有工具证据完成绑定，无需再次调用。
 
 ## 4. Hypothesis 协议
 
@@ -260,6 +263,8 @@ class Hypothesis(BaseModel):
 - runtime 在 prompt 中要求首轮或尽早提出至少 2 个候选原因；<2 时触发一次 repair。
 - 只有 1 个假设时，报告可以生成，但不能 `confirmed`。
 - 每个假设必须至少有一条 `discriminating=true` 的 requirement，避免“所有假设都用同一类无关证据”。
+- 每个假设只描述一个机制，不能用 “or” 把多个候选合并；不同机制必须拆成独立假设。
+- 同一症状的不同机制要分别验证。例如零行更新应区分：目标行不存在、行已处于目标状态（幂等重放被状态/版本 guard 挡住）、Mapper 方法未执行预期 SQL。
 - 替代假设必须被明确处理；只要有未排除的替代假设，目标假设最多 `supported`。
 
 ## 5. Evidence Assessment 协议
@@ -275,6 +280,7 @@ class EvidenceAssessment(BaseModel):
     verdict: Literal["supports", "refutes", "neutral"]
     rationale: str
     created_at: str
+    revised_at: str | None = None
 ```
 
 - Assessment 是 LLM 对**真实证据**的解释，不是新证据。
@@ -299,24 +305,37 @@ class EvidenceAssessment(BaseModel):
 }
 ```
 
-- `evidence_id` 与 `source_ref` 二选一；source_ref 必须在为该 hypothesis+requirement 绑定的证据中唯一匹配。
+- `evidence_id` 与 `source_ref` 二选一；source_ref 先在为该 hypothesis+requirement 绑定的证据中唯一匹配。
+- 若无已绑定匹配，但存在唯一一条同 source_ref、带 `tool_call_id`、kind 匹配的未绑定工具证据，则自动复用到该 requirement；否则拒绝。
 
 运行时校验：
 
 1. 每次 1–4 条 assessment。
 2. hypothesis 存在；requirement 属于该 hypothesis；evidence 由 evidence_id 或 source_ref 解析得到并存在。
-3. evidence 必须满足 `bound_hypothesis_id == hypothesis_id` 且 `bound_requirement_id == requirement_id`；`evidence.kind` 必须属于该 requirement 的 `evidence_kinds`；basis 证据不能直接满足 requirement。
+3. evidence 必须最终绑定到该 `(hypothesis_id, requirement_id)`（直接绑定或工具证据复用）；`evidence.kind` 必须属于该 requirement 的 `evidence_kinds`；纯 basis 证据不能直接满足 requirement。
 4. `rationale` 非空、≤500 字。
-5. 同一 `(hypothesis_id, requirement_id, 解析后 evidence_id)` 不得重复。
+5. 同一批内 `(hypothesis_id, requirement_id, 解析后 evidence_id)` 重复时，保留首条，后续条目进入 `rejected[]`。
 6. verdict 只能是 supports/refutes/neutral。
-7. 不存在的 ID、source_ref 零条/多条匹配、未绑定证据、重复 assessment → `INVALID_ASSESSMENT`，进入 repair。
+7. 单条不存在的 ID/source_ref 零条或多条/未绑定证据只拒绝该条；合法条目仍生效。整批全部无效才返回 `INVALID_ASSESSMENT`。
+8. 跨调用重评同一目标不视为重复：更新已有 assessment 的 verdict/rationale、写入 `revised_at`，返回 `revised_assessment_ids`；最新判断生效。
+
+返回结构：
+
+```json
+{
+  "assessment_ids": ["asm_0001"],
+  "revised_assessment_ids": ["asm_0002"],
+  "rejected": [{"index": 2, "reason": "INVALID_ASSESSMENT: ..."}]
+}
+```
 
 ### 5.3 状态语义
 
 - `supports`：该证据支持 requirement 描述的事实。
 - `refutes`：该证据反驳假设或触发 falsifier；一次 refute 即让该假设进入 `contradicted`。
 - `neutral`：记录观察，但不计入覆盖。
-- v0.3 不支持“refute 后再被 supports 覆盖”；refute 是终止性反证，除非重新提出新假设。
+- 同一评估集合中只要有 refute，假设就为 `contradicted`，并存的 supports 不能抵消。
+- 后续真实事实可以重评同一目标并修订 verdict；修订后按最新判断重新计算状态，不保留已撤销的旧 verdict。
 - LLM 可以评估多个假设；不能评估不存在或未绑定的证据。
 
 ## 6. 确定性 Evaluator
@@ -403,6 +422,7 @@ class EvidenceToolMeta(BaseModel):
 - 两者必须同时提供或同时省略。
 - 提供时必须指向已存在假设和该假设下的 requirement；否则 `INVALID_BINDING`。
 - 未提供时，工具结果仍进入证据账本，但 `bound_*` 为空，只能作为后续假设的 basis。
+- 同一事实可被多次绑定到不同 requirement/hypothesis；`bindings[]` 追加，`bound_*` 保留首个绑定。
 - `ToolResult` 增加 `bound_hypothesis_id` / `bound_requirement_id`，供 runtime 映射证据。
 - AuditEvent 增加 `bound_hypothesis_id` / `bound_requirement_id`。
 
@@ -447,7 +467,9 @@ class EvidenceToolMeta(BaseModel):
 - 工具结果被截断或字段缺失时，mapper 不创建不完整证据，记录 `evidence.mapping_failed` 事件。
 - 初始 `log_thread_context` 与工具返回使用相同 `source_ref` 时，ledger 复用已有证据并升级绑定；不重复创建，保留原 provenance，写入工具的 tool_call_id。
 - 同一 `(kind, source_ref)` 只保留一条证据；重复调用已被 executor 去重。
+- 已绑定的工具证据可通过 assessment 复用到其他 requirement/hypothesis；复用追加 `bindings[]`，不复制证据。
 - `claim` 由 mapper 根据结构化结果生成，不能包含 LLM 文本。
+- 证据 `content` 可保存有界源码正文（≤700 字符）、SQL 文本（≤500）和 DB 行/敏感列脱敏信息；prompt 渲染这些字段，但不发送完整文件。
 
 ### 7.4 控制工具
 
@@ -502,13 +524,14 @@ class EvidenceToolMeta(BaseModel):
 
 1. 角色、权限、只读边界、不可信数据规则。
 2. Incident 摘要、服务、主日志事件、异常链、栈帧、同线程日志上下文（按时间/行号排序）。
-3. 证据账本摘要：evidence_id、kind、source_ref、claim 摘要、bound 关系。
+3. 证据账本摘要：evidence_id、kind、source_ref、claim 摘要、bound 关系；必要时附有界源码/SQL/DB 行正文。
 4. 当前假设：statement、status、cause_chain、basis、requirements、missing、falsifiers。
 5. 已有 assessments 摘要。
 6. 可用工具目录、DB backend 是否存在及验证环境。
 7. 剩余预算、已用工具调用和 repair 次数。
 8. 输出要求：先提出 grounded 假设；验证调用必须绑定 hypothesis/requirement；不得声称 confirmed；修复建议必须引用证据。
 9. 日志-代码协同：先看同线程上下文重建业务步骤，再用栈帧/`logger` 定位代码，用代码流确认分支和副作用；不得只看异常行。
+10. 协议规则：假设必须描述单一机制（不能用 “or” 合并候选）；工具事实可跨 requirement 复用；同目标重评会修订旧判断；零行更新要区分行缺失、状态已满足、Mapper 未执行 SQL 等机制。
 
 规则：
 
@@ -554,6 +577,8 @@ class EvidenceToolMeta(BaseModel):
 | `max_output_bytes` | 32768 | 工具输出 |
 
 - CLI 保持 `--max-iterations` / `--max-tool-calls` 覆盖；默认值可按 T4 实现调整，但必须写入文档和测试。
+- CLI 不暴露 `--max-llm-calls`，运行时取 `max_iterations + 2`，为最终 remediation 预留调用；默认 iterations=10 时即 12。
+- T7 live 测试使用 16 iterations / 18 LLM calls / 24 tool calls / 2000 output tokens。
 - `budget_usage` 增加 `hypotheses`、`assessments`、`remediation_actions` 计数；保留 iterations/llm_calls/tool_calls。
 
 ### 8.6 停止条件
@@ -575,6 +600,7 @@ class EvidenceToolMeta(BaseModel):
 - `hypothesis.rejected`（含 reason）
 - `hypothesis.updated`（含 status/missing/score）
 - `assessment.created`（含 verdict）
+- `assessment.revised`（同一目标重评；含最新 verdict 与 revised_at）
 - `remediation.created` / `remediation.rejected`
 - `agent.repair`（含 reason）
 - `agent.stop_triggered`
@@ -604,6 +630,8 @@ class RemediationAction(BaseModel):
 
 - 在 `REPORTING` 阶段，runtime 发起**一次** LLM 调用，覆盖所有 `supported`/`confirmed` 假设，要求通过 `diagnosis.propose_remediation` 提交结构化 actions。
 - LLM 看到最终假设、assessments、evidence 摘要和限制；不能看到测试期望答案。
+- prompt 为每个候选假设列出 `allowed_evidence`（basis、已评估证据、绑定到该假设的工具事实），并要求只引用其中 ID。
+- prompt 明确 title/description/risk/target 长度上限、列表条数上限，并要求同一 `(hypothesis, type, target)` 只提交一条。
 - 每个假设最多 3 条，总计最多 8 条。
 - `supported` 假设的修复建议必须标注为“条件性建议”，因为它尚未确认。
 
@@ -612,15 +640,16 @@ class RemediationAction(BaseModel):
 运行时拒绝/丢弃以下 action：
 
 1. hypothesis 不存在或状态不是 supported/confirmed。
-2. 解析后的 `evidence_ids` 为空、存在非法 ID、或证据未关联该假设（basis 或 assessment 引用）；输入可用 `evidence_ids` 和/或 `evidence_source_refs`，source_ref 解析不到或越界即拒绝。
+2. 解析后的 `evidence_ids` 为空、存在非法 ID、或证据未关联该假设（basis、assessment 或 hypothesis binding）；输入可用 `evidence_ids` 和/或 `evidence_source_refs`，source_ref 解析不到或越界即拒绝。
 3. `type` 不在允许枚举。
 4. `title`/`description` 为空或超长。
 5. code target 文件不存在或越出仓库；data target 的表不在验证 backend 白名单；config/ops/test target 为空。
 6. 重复 `(hypothesis_id, type, target)`。
 7. 总数超过预算。
 
-- 无效 action 记录 `remediation.rejected` 并写入 validation errors；不进入报告。
-- 如果所有 action 都无效，报告增加限制说明，不伪造修复方案。
+- 无效 action 记录 `remediation.rejected`；不进入报告。
+- 部分尝试无效但最终仍有有效 action：保留有效方案，`remediation_grounded=true`，报告只加 limitation。
+- 所有尝试都无效或最终无 action：报告增加限制与 validation error，`remediation_grounded=false`，不伪造修复方案。
 - 修复建议只展示，不执行、不生成补丁、不修改文件。
 
 ## 10. 报告 schema 0.3
@@ -727,7 +756,7 @@ class RemediationAction(BaseModel):
 4. remediation action 的 hypothesis/evidence/target 合法。
 5. 有 fake DB 证据时 `verification.environment=fixture` 且 note 非空。
 6. 报告 status 与 runtime 计算一致。
-7. 任一失败：记录错误；诊断类错误将状态降级为 `insufficient_data`；无效 remediation 被丢弃并标记 `remediation_grounded=false`。
+7. 任一失败：记录错误。诊断类错误将状态降级为 `insufficient_data`。无效 remediation 被丢弃；只有最终没有任何有效 action 时才标记 `remediation_grounded=false`，部分尝试被拒但保留有效方案仍为 true，并附 limitation。
 
 ### 10.4 Markdown 结构
 
@@ -785,6 +814,7 @@ class RemediationAction(BaseModel):
 - 离线 Mock：3/3 Top-1，3/3 覆盖，3/3 同线程上下文且与代码证据共同评估，100% 引用有效，100% remediation 接地，0 越权。
 - 负向测试：未接地假设、伪造 evidence ID、无效 assessment、无证据 remediation、开放替代假设确认全部拒绝。
 - live：3/3 报告结构合法；Top-1 ≥ 2/3、Top-3 3/3；未达标如实记录。
+- 2026-10-22 实际：live 三 case 3/3 confirmed、Top-1 3/3、Top-3 3/3、同线程上下文 3/3、代码证据 3/3；离线 385 passed, 6 skipped。live 具非确定性，不代表生产准确率。
 
 ## 14. 兼容与迁移
 
@@ -806,13 +836,14 @@ class RemediationAction(BaseModel):
 | 日志上下文串线 | 线程号缺失、线程复用或跨线程噪声导致错误时序 | 工具只取同线程；证据标注 thread；跨线程事件不进入上下文证据；T6 测试噪声与缺失场景 |
 | 成本/上下文 | 多假设+多工具+修复调用 | 预算、证据上限、结果截断 |
 | 无 catalog 覆盖不足 | 新根因没有先验 | 这是有意取舍；T6/T7 记录失败案例，后续再决定 catalog/skill |
+| 证据复用过度 | 同一事实被随意绑定到不相关 requirement | 绑定/评估仍校验 kind 与 hypothesis；requirement 必须可由该事实解释；人工复核报告 |
 | 测试过拟合 | Mock 脚本按 case 编排 | runtime 无 case 分支；live 验证结构；expected 只在测试数据 |
 | 关键词评测脆弱 | 自然语言差异 | Mock 精确断言；live 以证据来源/结构为主 |
 
 **开放问题**
 
 - 是否允许 `neutral` assessment 出现在最终报告？允许，但不计覆盖。
-- refute 是否可被后续 supports 覆盖？v0.3 不允许；需要重新提出新假设。
+- refute 是否可被后续 supports 覆盖？同一评估集合中不允许；但可以重评同一目标修订 verdict，最新判断生效，并记录 `revised_at`/事件。
 - 两个假设都 qualifies 时是否允许并列？不允许 confirmed；报告 `probable` 并说明歧义。
 - 修复建议是否覆盖 `supported` 假设？允许，但标注条件性。
 - 是否需要 `max_context_chars` 的精确预算？v0.3 先实现证据条数和摘要上限，后续再细化。

@@ -2,7 +2,7 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T5
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T4
 - **下游**：T6、T7
 
@@ -50,28 +50,28 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/diagnosis/remediation.py`（模型/校验）
-- [ ] `src/tracemind/diagnosis/workspace.py` remediation 方法
-- [ ] `src/tracemind/tools/control.py` propose_remediation
-- [ ] `src/tracemind/diagnosis/report.py` schema 0.3
-- [ ] `templates/report.md.j2` 更新
-- [ ] `src/tracemind/cli/main.py` 摘要/JSON
-- [ ] `src/tracemind/storage/run_store.py` 0.3
-- [ ] `tests/unit/test_remediation.py`
-- [ ] `tests/unit/test_report_v03.py`
-- [ ] `tests/unit/test_citation_validator.py` 扩展
-- [ ] 更新的 E2E/CLI/run_store 测试
+- [x] `src/tracemind/diagnosis/remediation.py`（模型/校验）
+- [x] `src/tracemind/diagnosis/workspace.py` remediation 方法
+- [x] `src/tracemind/tools/control.py` propose_remediation
+- [x] `src/tracemind/diagnosis/report.py` schema 0.3
+- [x] `templates/report.md.j2` 更新
+- [x] `src/tracemind/cli/main.py` 摘要/JSON
+- [x] `src/tracemind/storage/run_store.py` 0.3
+- [x] `tests/unit/test_remediation.py`
+- [x] `tests/unit/test_report_v03.py`
+- [x] `tests/unit/test_citation_validator.py` 扩展
+- [x] 更新的 E2E/CLI/run_store 测试
 
 ## 3. Definition of Done
 
-- [ ] AC-T5-01 至 AC-T5-15 全部满足。
-- [ ] 每条修复建议有假设、证据、目标；无效建议不进入报告。
-- [ ] 报告展示同线程日志上下文与代码/工具证据，thread 级引用可校验。
-- [ ] supported 假设建议标记 conditional；无 confirmed 时不冒充确定修复。
-- [ ] 报告 schema 0.3 完整；Markdown/CLI/RunStore 一致。
-- [ ] db:// 引用、fixture 标注、状态一致性校验通过。
-- [ ] 无 key/完整 DB 行/完整源码泄露。
-- [ ] 全量离线测试、ruff、mypy 通过。
+- [x] AC-T5-01 至 AC-T5-15 全部满足。
+- [x] 每条修复建议有假设、证据、目标；无效建议不进入报告。
+- [x] 报告展示同线程日志上下文与代码/工具证据，thread 级引用可校验。
+- [x] supported 假设建议标记 conditional；无 confirmed 时不冒充确定修复。
+- [x] 报告 schema 0.3 完整；Markdown/CLI/RunStore 一致。
+- [x] db:// 引用、fixture 标注、状态一致性校验通过。
+- [x] 无 key/完整 DB 行/完整源码泄露。
+- [x] 全量离线测试、ruff、mypy 通过。
 
 ## 4. 验证命令
 
@@ -91,9 +91,16 @@ uv run mypy src
 - **一次 remediation 调用**：覆盖所有假设，避免多次调用成本；无效 action 丢弃。
 - **config/ops/test target**：只校验非空，报告中标注未自动验证。
 - **同线程上下文引用**：thread 级 source_ref 是多事件聚合，不能按单事件 ID 校验；必须验证明细项都属于该线程且行范围一致。
+- **allowed evidence 与重复 action**：prompt 应直接列出可引用证据和字段上限；同一 action 重复提交只作为一次被拒，不应否定已生成的有效方案。
 
 ## 6. 验证结果（实现后回填）
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | 待实现 | PLANNED | — |
+| 2026-10-22 | Claude | `uv run pytest tests/unit/test_remediation.py tests/unit/test_report_v03.py tests/unit/test_citation_validator.py tests/e2e/test_minimal_loop.py -q` | PASS（42 passed） | 新增 remediation、报告 0.3、引用校验测试 |
+| 2026-10-22 | Claude | `uv run pytest -q` | PASS（325 passed, 2 skipped） | live 测试默认跳过 |
+| 2026-10-22 | Claude | `uv run ruff check .` | PASS | — |
+| 2026-10-22 | Claude | `uv run mypy src` | PASS（48 source files） | — |
+| 2026-10-22 | Claude | 预算跳过用例 | PASS | `test_remediation_is_skipped_when_llm_budget_is_exhausted` 覆盖 AC-T5-14 |
+| 2026-10-22 | Claude | 最终全量 `uv run pytest -q` | PASS（385 passed, 6 skipped） | live 默认跳过 |
+| 2026-10-22 | Claude | 接地语义/绑定证据回归 | PASS | 混合被拒尝试保留 grounded plan；全部被拒仍失败；绑定证据可用于修复建议 |

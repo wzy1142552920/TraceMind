@@ -2,7 +2,7 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T2
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T4、T5、T6、T7
 
@@ -47,24 +47,24 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/indexing/java_index.py` 扩展
-- [ ] 新工具实现（可放在 `tools/builtin.py` 或 `tools/code_flow.py`）
-- [ ] 工具注册与描述
-- [ ] `tests/unit/test_java_index.py` 扩展
-- [ ] `tests/unit/test_code_flow.py`
-- [ ] `tests/unit/test_code_flow_tools.py`
-- [ ] 受影响的 registry/executor 测试适配
+- [x] `src/tracemind/indexing/java_index.py` 扩展
+- [x] 新工具实现（`src/tracemind/tools/code_flow.py`）
+- [x] 工具注册与描述
+- [x] `tests/unit/test_java_index.py` 扩展
+- [x] `tests/unit/test_code_flow.py`
+- [x] `tests/unit/test_code_flow_tools.py`
+- [x] 受影响的 registry/executor 测试适配
 
 ## 3. Definition of Done
 
-- [ ] AC-T2-01 至 AC-T2-13 全部满足。
-- [ ] `OrderController.paid → OrderService.handlePaid → OrderService.updateStatus → OrderMapper.updateStatus` 关键链路可查。
-- [ ] 重载方法不强行唯一；所有候选带 confidence/provenance。
-- [ ] `@Update` SQL、表名和 guard 条件可查。
-- [ ] 未知 symbol/超限参数有稳定错误。
-- [ ] 现有 find_symbol/get_source_range 行为不回归。
-- [ ] 日志 `logger` 简单类名/栈帧可解析到类或方法，且不越权解析日志内容。
-- [ ] 全量离线测试、ruff、mypy 通过。
+- [x] AC-T2-01 至 AC-T2-13 全部满足。
+- [x] `OrderController.paid → OrderService.handlePaid → OrderService.updateStatus → OrderMapper.updateStatus` 关键链路可查。
+- [x] 重载方法不强行唯一；所有候选带 confidence/provenance。
+- [x] `@Update` SQL、表名和 guard 条件可查。
+- [x] 未知 symbol/超限参数有稳定错误。
+- [x] 现有 find_symbol/get_source_range 行为不回归。
+- [x] 日志 `logger` 简单类名/栈帧可解析到类或方法，且不越权解析日志内容。
+- [x] 全量离线测试、ruff、mypy 通过。
 
 ## 4. 验证命令
 
@@ -87,4 +87,7 @@ uv run mypy src
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | 待实现 | PLANNED | — |
+| 2026-10-22 | Claude | T2 定向 pytest | 48 passed | 索引、调用边、SQL、工具、绑定 |
+| 2026-10-22 | Claude | `uv run pytest -q` | 221 passed, 2 skipped | live 测试保持 opt-in |
+| 2026-10-22 | Claude | `uv run ruff check .` | passed | — |
+| 2026-10-22 | Claude | `uv run mypy src` | passed | 41 source files |

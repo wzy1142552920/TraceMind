@@ -69,34 +69,50 @@ def test_runtime_records_llm_usage() -> None:
     )
 
     assert result.state is RuntimeState.COMPLETED
-    assert len(result.llm_calls) == 1
-    call = result.llm_calls[0]
-    assert call.llm_call_id == "llm_0001"
-    assert call.round == 1
-    assert call.provider == "mock"
-    assert call.model == "script"
-    assert call.request_id is None
-    assert call.latency_ms >= 0
-    assert call.attempts == 1
-    assert call.ok is True
-    assert call.finish_reason == "tool_calls"
-    assert call.tool_calls == 2
-    assert call.input_tokens == 100
-    assert call.output_tokens == 30
-    assert call.total_tokens == 130
+    assert len(result.llm_calls) == 3
+    first, second, third = result.llm_calls
+    assert first.llm_call_id == "llm_0001"
+    assert first.round == 1
+    assert first.provider == "mock"
+    assert first.model == "script"
+    assert first.request_id is None
+    assert first.latency_ms >= 0
+    assert first.attempts == 1
+    assert first.ok is True
+    assert first.finish_reason == "tool_calls"
+    assert first.tool_calls == 5
+    assert first.input_tokens == 100
+    assert first.output_tokens == 30
+    assert first.total_tokens == 130
+    assert second.llm_call_id == "llm_0002"
+    assert second.round == 2
+    assert second.tool_calls == 1
+    assert second.input_tokens == 120
+    assert second.output_tokens == 10
+    assert third.llm_call_id == "llm_0003"
+    assert third.round == 3
+    assert third.tool_calls == 1
+    assert third.input_tokens == 140
+    assert third.output_tokens == 40
+    assert third.total_tokens == 180
 
     usage = result.llm_usage
-    assert usage.calls == 1
+    assert usage.calls == 3
     assert usage.failed_calls == 0
     assert usage.retries == 0
-    assert usage.input_tokens == 100
-    assert usage.output_tokens == 30
-    assert usage.total_tokens == 130
-    assert usage.latency_ms == call.latency_ms
+    assert usage.input_tokens == 360
+    assert usage.output_tokens == 80
+    assert usage.total_tokens == 440
+    assert usage.latency_ms == (
+        first.latency_ms + second.latency_ms + third.latency_ms
+    )
     assert result.budget_usage == {
-        "iterations": 1,
-        "llm_calls": 1,
-        "tool_calls": 2,
+        "iterations": 3,
+        "llm_calls": 3,
+        "tool_calls": 7,
+        "hypotheses": 2,
+        "assessments": 3,
+        "remediation_actions": 1,
     }
 
     called = next(
@@ -105,6 +121,16 @@ def test_runtime_records_llm_usage() -> None:
     assert called.data["input_tokens"] == 100
     assert called.data["attempts"] == 1
     assert called.data["llm_call_id"] == "llm_0001"
+    assert called.data["tool_calls"] == 5
+
+    remediation_call = [
+        event
+        for event in result.events
+        if event.event_type == "llm.called"
+        and event.data.get("phase") == "remediation"
+    ]
+    assert len(remediation_call) == 1
+    assert remediation_call[0].data["llm_call_id"] == "llm_0003"
 
 
 def test_failed_llm_call_is_recorded() -> None:

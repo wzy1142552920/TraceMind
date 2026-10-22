@@ -1,7 +1,7 @@
 # T4 — 鉴别诊断运行时 Spec
 
 - **任务 ID**：T4
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T1、T2、T3
 - **下游**：T5、T6、T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -32,6 +32,8 @@ T4 把 T1 的证据/假设协议、T2 的代码流工具、T3 的只读验证工
 - 工具调用处理：
   - 控制工具：propose_hypothesis / assess_evidence。
   - 证据工具：meta 绑定 + 执行 + 确定性证据映射；新增 `logs.get_thread_context`。
+  - 同一工具事实可复用/多绑定到其他 requirement；重评同一目标修订已有 assessment。
+  - prompt 暴露有界源码正文、SQL 文本和脱敏 DB 行值，避免模型只能看到引用摘要。
   - 绑定错误/未知工具/非法参数/重复调用。
 - 证据映射（使用 T2/T3 输出）：
   - logs.search / logs.get_event_context → log_event
@@ -77,6 +79,7 @@ T4 把 T1 的证据/假设协议、T2 的代码流工具、T3 的只读验证工
 | FR-T4-15 | 现有 Mock happy path 迁移为新协议并保持确定性 | must |
 | FR-T4-16 | `logs.get_thread_context` 只返回同一 `thread` 的有序事件，并映射为 `log_thread_context` 证据 | must |
 | FR-T4-17 | 主事件有线程号时，缺少已评估的同线程上下文不能 confirmed，并触发 repair | must |
+| FR-T4-18 | 已绑定工具证据可复用到其他 requirement；同目标重评修订原判断并计为进展 | must |
 
 ## 5. 接口/数据契约
 
@@ -150,6 +153,8 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 - 证据行同时展示 evidence_id 和 source_ref；assessment/remediation 可用二者之一，runtime 解析后统一记录 evidence_id。
 - 同线程上下文按日志顺序展示，每条含行号/级别/`logger_class`/message；跨线程事件单列或省略；明确标注“不可信数据”。
 - 证据/源码/日志摘要每项有字符上限；总证据条数 ≤ `max_evidence_items`。
+- `source_code` 证据附带 ≤700 字符源码正文，`sql` 附带 ≤500 字符 SQL，`db_row` 附带 found/environment/脱敏行值和 redacted 列；这些内容来自已产生证据的 `content`，不额外读取文件。
+- 评估规则提示：工具事实可跨 requirement/假设复用；同目标重评修订而非重复；批内合法项会保留，必须阅读 `rejected[]`；假设必须是单一机制，不能用 “or” 合并多个原因。
 - 不发送完整源代码/日志文件；源码片段由 `code.get_source_range` 按需读取。
 - 不把 `expected` 测试数据写入 prompt。
 
@@ -186,7 +191,7 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 - `claim` 由 mapper 生成；工具 data 缺失关键字段时记录 `evidence.mapping_failed`，不创建半截证据。
 - `strength`：直接读取/DB 行/同线程上下文=strong；调用边/索引摘要=medium；无法确定的启发式=weak。
 - `provenance`：db_* → fake_verification；其他工具 → tool。
-- 同一 `(kind, source_ref)` 只保留一条；工具的 `bound_*` 合并到已有证据时，若已有未绑定证据，允许升级绑定；若已绑定到不同 requirement，拒绝并记录。
+- 同一 `(kind, source_ref)` 只保留一条；工具的绑定合并到已有证据时，若已有未绑定证据，允许升级绑定；若已绑定到其他 requirement，追加 `bindings[]` 而不是拒绝或复制证据。
 - 初始 `log_thread_context` 与工具返回相同 `source_ref` 时，复用已有证据并升级绑定，不重复创建；保留原 `provenance=log_parser`，写入本次工具的 `tool_call_id` 与绑定元数据。
 - 其他初始证据被工具重新读取并绑定时同样处理：不复制证据、不篡改 provenance，只补充 tool_call_id/bound_*。
 
@@ -239,7 +244,7 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 - 每轮 EXECUTING 结束进入 EVALUATING：
   - 把新 evidence/assessments 送入 `evaluate_hypotheses`，并传入 `require_log_thread_context = primary_event.thread is not None` 与 `required_log_thread = primary_event.thread`。
   - 更新 hypothesis status/missing/score。
-  - 发出 `hypothesis.updated` / `assessment.created` 等事件。
+  - 发出 `hypothesis.updated` / `assessment.created` / `assessment.revised` 等事件；重评计入本轮进展，避免误判为无进展。
 - run 级 confirmed 检查：
   - ≥2 假设；
   - 所有 requirements 满足；
@@ -258,7 +263,7 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 | `no_hypotheses` | 首轮后无假设 | 提示提出 ≥2 grounded 假设 |
 | `insufficient_hypotheses` | 停止/确认时 <2 | 提示补充候选或说明 |
 | `ungrounded_hypothesis` | 控制工具拒绝 | 返回具体错误/可用 evidence ID |
-| `invalid_assessment` | assessment 校验失败 | 返回错误/已绑定 evidence |
+| `invalid_assessment` | assessment 单条/整批校验失败 | 合法条目已保留；返回 `rejected[]`/已绑定 evidence |
 | `no_tool_calls` | text-only 且未确认 | 提示调用工具或说明缺口 |
 | `no_new_evidence` | 工具调用无新证据 | 提示换工具/方向 |
 | `missing_thread_context` | 主事件有线程号，且准备确认/停止或无进展时仍无已绑定/评估的同线程上下文 | 提示调用 `logs.get_thread_context` 并评估 |
@@ -275,7 +280,7 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 | 预算 | 默认 | 说明 |
 |---|---|---|
 | `max_iterations` | 10 | 含假设/调查/修复 |
-| `max_llm_calls` | 12 | 与当前 Budget 默认一致 |
+| `max_llm_calls` | 12 | 默认值；CLI 覆盖为 `max_iterations + 2`，为最终 remediation 预留调用 |
 | `max_tool_calls` | 16 | 含控制工具 |
 | `max_hypotheses` | 6 | — |
 | `max_requirements_per_hypothesis` | 5 | — |
@@ -284,6 +289,7 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 | `max_output_bytes` | 32768 | 工具输出 |
 
 - CLI 保持 `--max-iterations` / `--max-tool-calls` 覆盖；默认值同步为 `10` / `16`，并在 CLI/测试/README 中保持一致。
+- CLI 不暴露 `--max-llm-calls`，运行时使用 `max_iterations + 2`；T7 live 预算单独设为 16 iterations / 18 LLM / 24 tools / 2000 output tokens。
 - `BudgetUsage` 增加 `hypotheses`、`assessments`、`remediation_actions`；保留现有三个计数。
 
 ### 5.9 事件
@@ -292,6 +298,7 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 - `evidence.mapping_failed`：tool_call_id/reason。
 - `hypothesis.created` / `hypothesis.rejected` / `hypothesis.updated`。
 - `assessment.created`：assessment_id/verdict。
+- `assessment.revised`：assessment_id/verdict/rationale 更新与修订时间。
 - `agent.repair`：reason/attempt。
 - `agent.stop_triggered`：state/reason。
 - 现有 `state.changed`、`llm.called`、`tool.called` 保留。
@@ -302,9 +309,9 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 |---|---|---|
 | AC-T4-01 | 初始证据含 log_event/log_thread_context/stack_frame/source_code | `tests/integration/test_v03_runtime.py` |
 | AC-T4-02 | prompt 含同线程上下文、证据/假设/requirements/assessment/预算 | prompt 捕获测试 |
-| AC-T4-03 | 控制工具可创建假设/assessment，LLM 不能传 status | 集成测试 |
+| AC-T4-03 | 控制工具可创建假设/assessment，LLM 不能传 status；重评同一目标修订原判断并发出 `assessment.revised` | 集成测试 |
 | AC-T4-04 | 证据工具绑定 meta，结果写入 bound_* | `test_tool_binding.py` + runtime |
-| AC-T4-05 | 工具结果映射为证据，LLM 文本不进入 claim | 集成测试 |
+| AC-T4-05 | 工具结果映射为证据，LLM 文本不进入 claim；同一真实事实可复用到其他 requirement | 集成测试 |
 | AC-T4-06 | 每轮后 evaluator 更新状态/排序 | 集成测试 |
 | AC-T4-07 | 开放替代假设时不 confirmed | 脚本化 provider |
 | AC-T4-08 | 模型文本声称 confirmed 无效 | `test_model_prose_cannot_confirm` |
@@ -333,8 +340,9 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
   - 1 假设 → 不 confirmed；repair 后补充第 2 个。
   - 开放替代 supported → 不 confirmed，报告 probable（T5）。
   - 未接地假设 → repair → 合法假设。
-  - 未绑定证据 assessment → 拒绝 → repair。
-  - 无工具调用/无新证据 → repair/停止。
+  - 未绑定证据 assessment → 拒绝 → repair；已绑定工具证据复用/多绑定 → 接受。
+  - 同一批 assessment 部分合法 → 合法项保留；同目标重评 → 修订并发出事件。
+  - 无工具调用/无新证据 → repair/停止；仅修订 assessment 不算无进展。
   - 模型文本声称确认 → 不改变状态。
   - 同线程过滤：跨线程事件混入日志时，`logs.get_thread_context` 不返回它们。
   - 缺上下文：有线程号但准备确认时未评估 `log_thread_context` → repair；修复后 confirmed。
@@ -350,6 +358,7 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 ### Prompt/安全
 
 - 断言 prompt 含证据/假设/预算，不含 expected 数据。
+- 断言 prompt 含源码/SQL/DB 行有界正文、allowed evidence 和重评规则。
 - 恶意日志/DB 内容“忽略指令”不改变工具目录/预算。
 - 不把完整源码/日志放入 prompt。
 
@@ -367,6 +376,8 @@ Rules: reconstruct the business sequence from same-thread context; resolve logge
 | 同线程上下文噪声 | 同线程事件包含无关请求或伪日志 | 限制前后各 3 条；保留 logger_class/行号；由 LLM 评估，报告展示原文 |
 | 线程字段解析失败 | 日志格式缺少 thread 或格式异常 | 无 thread 时不建上下文证据，不触发上下文门槛；日志 parser 标记 warning |
 | 日志-代码错位 | logger 继承/代理类、缩写包名导致定位错误 | 只取最后一段简单类名 + 栈帧双通道；工具返回候选；源码确认 |
+| 模型重复取证 | 多假设需要同一事实时重复调用工具 | 证据多绑定；prompt 展示绑定关系；相同参数去重 |
+| 模型自相矛盾 | 前后 assessment 冲突 | 同一目标修订、最新判断生效；事件记录修订；最终 evaluator 重新计算 |
 
 **开放问题**
 
@@ -388,7 +399,21 @@ uv run mypy src
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| — | 待实现后回填 | PLANNED |
+| 2026-10-22 | `uv run pytest tests/integration/test_v03_runtime.py tests/integration/test_minimal_loop_runtime.py tests/unit/test_tool_executor.py tests/unit/test_runtime_budget.py tests/unit/test_runtime_observability.py -q` | 40 passed |
+| 2026-10-22 | `uv run pytest -q` | 294 passed, 2 skipped（live opt-in） |
+| 2026-10-22 | `uv run ruff check .` | All checks passed |
+| 2026-10-22 | `uv run mypy src` | Success, 47 source files |
+| 2026-10-22 | 最终全量 `uv run pytest -q` | 385 passed, 6 skipped（live opt-in） |
+| 2026-10-22 | `ruff check .` / `mypy src` | PASS（48 source files） |
+| 2026-10-22 | 实现后运行时回归 | PASS：多绑定、tool evidence 复用、assessment 部分接受/修订、修订计为进展 |
+
+实现说明：
+
+- Mock happy path 改为两轮 grounded 协议：首轮提出 2 个假设并调用上下文/源码/SQL 工具，次轮完成 3 条 assessment；结果为 hyp_001 confirmed、hyp_002 contradicted，2 次 LLM 调用、6 次工具调用。
+- `DiagnosisWorkspace` 修复了空 `EvidenceLedger` 因 `__len__` 为 0 被误判为假值而替换成新 ledger 的问题；否则所有 proposal 都会报 `basis evidence does not exist`。
+- run 级确认额外检查：至少 2 个假设、替代全部 contradicted、同线程上下文已绑定并评估；模型文本不参与确认。
+- 报告 schema 仍为 0.2（T5 升级 0.3）；仅补充 v0.3 引用格式（单行 repo 引用、带线程的日志引用）校验，DB 引用校验留待 T5。
+- `legacy_evaluator.py` 与对应测试已删除，避免双确认语义。
 
 ## 11. 变更记录
 
@@ -396,3 +421,5 @@ uv run mypy src
 |---|---|
 | 2026-10-22 | 创建 T4 spec：初始证据、多假设循环、绑定工具、评估接线、repair/预算/停止 |
 | 2026-10-22 | 增加同线程日志上下文证据、`logs.get_thread_context`、上下文确认门槛与 repair；补充测试/风险 |
+| 2026-10-22 | 实现完成：初始证据、多假设运行时、控制/证据工具、确定性映射、evaluator 接线、repair/预算/停止；迁移 Mock 与旧测试 |
+| 2026-10-22 | live 调优后补强：prompt 暴露源码/SQL/DB 正文；单机制假设规则；工具证据多绑定/复用；assessment 修订与部分接受；CLI LLM 预算 = iterations + 2 |

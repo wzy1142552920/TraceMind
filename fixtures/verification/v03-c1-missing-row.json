@@ -1,0 +1,11 @@
+{
+  "backend": "fake",
+  "tables": {
+    "orders": {
+      "primary_key": "id",
+      "columns": ["id", "status", "updated_at"],
+      "sensitive_columns": [],
+      "rows": []
+    }
+  }
+}

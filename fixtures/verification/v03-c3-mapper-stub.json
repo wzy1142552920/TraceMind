@@ -1,0 +1,17 @@
+{
+  "backend": "fake",
+  "tables": {
+    "orders": {
+      "primary_key": "id",
+      "columns": ["id", "status", "updated_at"],
+      "sensitive_columns": [],
+      "rows": [
+        {
+          "id": 10086,
+          "status": "PENDING",
+          "updated_at": "2026-10-18T10:20:58.000"
+        }
+      ]
+    }
+  }
+}

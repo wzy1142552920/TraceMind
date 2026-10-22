@@ -1,7 +1,7 @@
 # T5 — 结构化修复与报告 0.3 Spec
 
 - **任务 ID**：T5
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T4
 - **下游**：T6、T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -85,7 +85,7 @@ class RemediationAction(BaseModel):
 |---|---|
 | title | 1..120 字 |
 | description | 1..1000 字 |
-| evidence_ids | 1..8 个，真实存在且关联该假设 |
+| evidence_ids | 1..8 个，真实存在且关联该假设（basis、assessment 或已绑定事实） |
 | target | code/data 需可校验；config/ops/test 非空 |
 | risk | 1..300 字 |
 | prerequisites | 0..5 条，每条 ≤300 字 |
@@ -94,6 +94,8 @@ class RemediationAction(BaseModel):
 - `action_id` 由 runtime 分配（`act_001...`）。
 - LLM 只能提交不含 action_id 的 action。
 - LLM 输入可用 `evidence_ids` 和/或 `evidence_source_refs`；runtime 解析后存 `evidence_ids`，报告只展示解析后的 ID。
+- REPORTING prompt 为每个候选假设列出 `allowed_evidence`，要求只引用其中的 ID；该集合包含 basis、已评估证据和绑定到该假设的工具事实。
+- prompt 明确字段上限，并要求同一 `(hypothesis, type, target)` 只提交一条，避免重复 action。
 - 修复建议只读展示，不执行。
 
 ### 5.2 `diagnosis.propose_remediation`
@@ -126,7 +128,7 @@ class RemediationAction(BaseModel):
 ### 5.3 校验规则
 
 1. hypothesis 存在且状态 ∈ {supported, confirmed}。
-2. evidence_ids/evidence_source_refs 合并解析后非空、全部存在，且至少一条关联该假设（basis 或 assessment 引用）；source_ref 解析不到即拒绝。
+2. evidence_ids/evidence_source_refs 合并解析后非空、全部存在，且至少一条关联该假设（basis、assessment 或 hypothesis binding）；source_ref 解析不到即拒绝。
 3. type 在枚举内。
 4. title/description/risk 非空且不超长。
 5. target：
@@ -262,7 +264,8 @@ class RemediationAction(BaseModel):
 6. report status 与 runtime 计算一致。
 7. 失败处理：
    - 引用/证据/假设/状态失败：status 降级 `insufficient_data`，追加 limitation。
-   - remediation 失败：丢弃无效 action，`remediation_grounded=false`，诊断状态不因此降级。
+   - remediation 部分失败：丢弃无效 action，保留已验证方案；`remediation_grounded=true`，追加“部分尝试被拒”的 limitation，诊断状态不因此降级。
+   - remediation 全部失败（所有尝试被拒或最终无 action）：`remediation_grounded=false`，追加 limitation 与 validation error，诊断状态不因此降级。
 
 ### 5.7 Markdown
 
@@ -306,7 +309,7 @@ class RemediationAction(BaseModel):
 | AC-T5-04 | code target 越界/不存在、data target 非白名单被拒绝 | 同上 |
 | AC-T5-05 | 去重/每假设/总数上限生效 | 同上 |
 | AC-T5-06 | supported 假设的建议标记 conditional | 报告测试 |
-| AC-T5-07 | 无有效修复时不伪造，增加 limitation/validation error | 同上 |
+| AC-T5-07 | 无有效修复时不伪造并报 validation error；部分尝试被拒但保留有效方案时仍 grounded，只加 limitation | 同上 |
 | AC-T5-08 | `db://` 引用校验、fake 环境标注 | `test_citation_validator.py` |
 | AC-T5-09 | 诊断校验失败降级 status；remediation 失败不降级 | 报告测试 |
 | AC-T5-10 | Markdown/CLI/RunStore 0.3 字段完整 | E2E/CLI 测试 |
@@ -321,7 +324,7 @@ class RemediationAction(BaseModel):
 ### 单元
 
 - `tests/unit/test_remediation.py`
-  - 合法 action。
+  - 合法 action；引用已绑定到该假设的工具证据。
   - hypothesis 状态不合法。
   - 证据缺失/未关联/伪造。
   - type/target/title/description/risk 校验。
@@ -331,6 +334,9 @@ class RemediationAction(BaseModel):
   - status 映射、hypotheses 排序、conditional 标记。
   - verification fixture/none。
   - validation 降级逻辑。
+  - 混合“被拒尝试 + 有效方案”保持 grounded；全部被拒才失败。
+- `tests/unit/test_diagnosis_prompts.py`
+  - remediation prompt 列出 allowed evidence、字段上限与去重规则。
 - `tests/unit/test_citation_validator.py` 扩展
   - `db://` 有效/无效/不在证据账本。
   - `log://#thread=...&Lx-Ly` 有效/线程不存在/行号越界。
@@ -347,7 +353,7 @@ class RemediationAction(BaseModel):
 | 风险 | 说明 | 缓解 |
 |---|---|---|
 | 修复建议幻觉 | 描述合理但无证据 | evidence 绑定 + target 校验 + conditional 标注 |
-| 证据洗白 | 引用无关 evidence | 要求关联假设；报告展示 evidence/rationale；人工复核 |
+| 证据洗白 | 引用无关 evidence | 要求关联假设（basis/assessment/binding）；prompt 列出 allowed evidence；报告展示 evidence/rationale；人工复核 |
 | 报告膨胀 | 多假设+多建议+证据 | 数量上限、摘要、Markdown 分组 |
 | 假验证误读 | fixture 被当成生产 | environment/note/limitations 强制 |
 | schema 破坏 | 0.2 消费者 | v0.3 无 shim；文档/测试同步 |
@@ -374,7 +380,14 @@ uv run mypy src
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| — | 待实现后回填 | PLANNED |
+| 2026-10-22 | `uv run pytest tests/unit/test_remediation.py tests/unit/test_report_v03.py tests/unit/test_citation_validator.py tests/e2e/test_minimal_loop.py -q` | PASS（42 passed） |
+| 2026-10-22 | `uv run pytest -q` | PASS（325 passed, 2 skipped） |
+| 2026-10-22 | `uv run ruff check .` | PASS |
+| 2026-10-22 | `uv run mypy src` | PASS（48 source files） |
+| 2026-10-22 | Mock E2E 报告检查 | PASS：schema 0.3、status=confirmed、1 条 remediation、全部 validation 标志为 true |
+| 2026-10-22 | 预算跳过检查 | PASS：LLM 预算耗尽时报告无修复方案并记录 limitation |
+| 2026-10-22 | 最终全量 `uv run pytest -q` | PASS（385 passed, 6 skipped） |
+| 2026-10-22 | 修复接地补强检查 | PASS：绑定证据可引用；混合被拒尝试 + 有效方案 grounded=true；全部被拒 grounded=false |
 
 ## 11. 变更记录
 
@@ -382,3 +395,5 @@ uv run mypy src
 |---|---|
 | 2026-10-22 | 创建 T5 spec：结构化 remediation、报告 0.3、引用/接地/fixture 标注校验 |
 | 2026-10-22 | 增加同线程日志上下文展示与 thread 级 `log://` 引用校验 |
+| 2026-10-22 | T5 implemented：REPORTING 单次 remediation 调用、确定性校验/丢弃、报告 0.3、Markdown/CLI/RunStore 迁移；全量离线测试、ruff、mypy 通过 |
+| 2026-10-22 | live 调优后修订：allowed evidence 含 hypothesis bindings；字段上限/重复 action 提示；混合被拒不破坏最终方案的接地状态 |

@@ -1,0 +1,10 @@
+2026-10-18 10:21:03.409 DEBUG [http-nio-8080-exec-3] c.e.pay.PaymentNotifier - webhook ack orderId=10086
+2026-10-18 10:21:03.412 INFO  [http-nio-8080-exec-7] c.e.order.OrderController - paid callback orderId=10086
+2026-10-18 10:21:03.413 DEBUG [http-nio-8080-exec-3] c.e.pay.PaymentNotifier - retry probe scheduled
+2026-10-18 10:21:03.415 WARN  [http-nio-8080-exec-7] c.e.order.OrderService - updateStatus returned rows=0, orderId=10086
+2026-10-18 10:21:03.416 ERROR [http-nio-8080-exec-7] c.e.order.OrderService - failed to update order status
+java.lang.IllegalStateException: update failed for orderId=10086
+    at com.example.order.OrderService.updateStatus(OrderService.java:24)
+    at com.example.order.OrderService.handlePaid(OrderService.java:14)
+    at com.example.order.OrderController.paid(OrderController.java:16)
+    at java.base/java.lang.Thread.run(Thread.java:840)

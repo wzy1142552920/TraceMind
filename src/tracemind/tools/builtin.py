@@ -4,53 +4,62 @@ from __future__ import annotations
 
 from typing import Any, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from tracemind.core.models import LogEvent, ParsedLog
 from tracemind.indexing.java_index import JavaIndex, JavaIndexError, SourceMatch
+from tracemind.log_analysis.thread_context import (
+    ThreadContextError,
+    collect_thread_context,
+)
+from tracemind.tools.code_flow import register_code_flow_tools
 from tracemind.tools.contracts import (
+    EvidenceToolMeta,
     ToolContext,
     ToolError,
     ToolErrorCode,
     ToolHandlerResult,
     ToolSpec,
 )
+from tracemind.tools.control import register_control_tools
 from tracemind.tools.registry import ToolRegistry
+from tracemind.tools.verification import register_verification_tools
+from tracemind.verification import ReadOnlyVerificationBackend
 from tracemind.workspace.paths import resolve_under_root
 
 
-class LogSearchArgs(BaseModel):
+class LogSearchArgs(EvidenceToolMeta):
     """Arguments for ``logs.search``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     query: str = Field(min_length=1)
     limit: int = Field(default=10, ge=1, le=50)
 
 
-class LogEventContextArgs(BaseModel):
+class LogEventContextArgs(EvidenceToolMeta):
     """Arguments for ``logs.get_event_context``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     event_id: str = Field(min_length=1)
     before: int = Field(default=2, ge=0, le=20)
     after: int = Field(default=2, ge=0, le=20)
 
 
-class CodeFindSymbolArgs(BaseModel):
+class LogThreadContextArgs(EvidenceToolMeta):
+    """Arguments for ``logs.get_thread_context``."""
+
+    event_id: str | None = Field(default=None, min_length=1)
+    before: int = Field(default=3, ge=0, le=20)
+    after: int = Field(default=3, ge=0, le=20)
+
+
+class CodeFindSymbolArgs(EvidenceToolMeta):
     """Arguments for ``code.find_symbol``."""
 
-    model_config = ConfigDict(extra="forbid")
-
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=200)
     limit: int = Field(default=10, ge=1, le=20)
 
 
-class CodeGetSourceRangeArgs(BaseModel):
+class CodeGetSourceRangeArgs(EvidenceToolMeta):
     """Arguments for ``code.get_source_range``."""
-
-    model_config = ConfigDict(extra="forbid")
 
     file_path: str = Field(min_length=1)
     start_line: int = Field(ge=1)
@@ -64,8 +73,10 @@ class CodeGetSourceRangeArgs(BaseModel):
         return self
 
 
-def build_default_registry() -> ToolRegistry:
-    """Register the four v0.1 local tools."""
+def build_default_registry(
+    verification_backend: ReadOnlyVerificationBackend | None = None,
+) -> ToolRegistry:
+    """Register local read-only tools and v0.3 diagnosis control tools."""
     registry = ToolRegistry()
     registry.register(
         ToolSpec(
@@ -85,6 +96,18 @@ def build_default_registry() -> ToolRegistry:
     )
     registry.register(
         ToolSpec(
+            name="logs.get_thread_context",
+            description=(
+                "Return ordered log events from the anchor event's own thread "
+                "within a bounded radius. Cross-thread events are excluded and "
+                "stack frames are not included."
+            ),
+            input_model=LogThreadContextArgs,
+        ),
+        _logs_get_thread_context,
+    )
+    registry.register(
+        ToolSpec(
             name="code.find_symbol",
             description="Find Java classes, methods, or constructors by name.",
             input_model=CodeFindSymbolArgs,
@@ -99,6 +122,10 @@ def build_default_registry() -> ToolRegistry:
         ),
         _code_get_source_range,
     )
+    register_code_flow_tools(registry)
+    if verification_backend is not None:
+        register_verification_tools(registry, verification_backend)
+    register_control_tools(registry)
     return registry
 
 
@@ -145,6 +172,28 @@ def _logs_get_event_context(context: ToolContext, args: BaseModel) -> ToolHandle
     )
 
 
+def _logs_get_thread_context(
+    context: ToolContext,
+    args: BaseModel,
+) -> ToolHandlerResult:
+    params = cast(LogThreadContextArgs, args)
+    parsed = _require_parsed_log(context)
+    try:
+        thread_context = collect_thread_context(
+            parsed,
+            params.event_id,
+            before=params.before,
+            after=params.after,
+        )
+    except ThreadContextError as exc:
+        raise ToolError(ToolErrorCode(exc.code), exc.message) from exc
+    return ToolHandlerResult(
+        data=thread_context.model_dump(),
+        source_ref=thread_context.source_ref,
+        truncated=thread_context.truncated,
+    )
+
+
 def _code_find_symbol(context: ToolContext, args: BaseModel) -> ToolHandlerResult:
     params = cast(CodeFindSymbolArgs, args)
     java_index = _require_java_index(context)
@@ -161,11 +210,17 @@ def _code_find_symbol(context: ToolContext, args: BaseModel) -> ToolHandlerResul
         )
         for symbol in java_index.find_symbol(params.query, params.limit)
     ]
-    items = [match.model_dump() for match in source_matches]
-    source_ref = None
-    if source_matches:
-        first = source_matches[0]
-        source_ref = _repo_ref(first.file_path, first.start_line, first.end_line)
+    items: list[dict[str, Any]] = []
+    for match in source_matches:
+        item = match.model_dump()
+        item.update(match.symbol.model_dump())
+        item["source_ref"] = _repo_ref(
+            match.file_path,
+            match.start_line,
+            match.end_line,
+        )
+        items.append(item)
+    source_ref = items[0]["source_ref"] if items else None
     return ToolHandlerResult(
         data={"items": items, "count": len(items)},
         source_ref=source_ref,

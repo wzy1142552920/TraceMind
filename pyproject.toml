@@ -1,6 +1,6 @@
 [project]
 name = "tracemind"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first, evidence-driven Java incident localization agent"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -24,6 +24,7 @@ dev = [
     "pytest-cov",
     "ruff",
     "mypy",
+    "pyyaml>=6.0.3",
 ]
 
 [build-system]

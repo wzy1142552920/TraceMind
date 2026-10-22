@@ -1,4 +1,4 @@
-"""Unit tests for report generation and status mapping."""
+"""Unit tests for report generation and status mapping for schema 0.3."""
 
 from __future__ import annotations
 
@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 
 from tracemind.diagnosis.evidence import (
+    EvaluationResult,
     Evidence,
     Hypothesis,
+    HypothesisEvaluation,
     RunResult,
     ToolCallRecord,
 )
@@ -39,36 +41,54 @@ def _result(
             kind="stack_frame",
             claim="Stack frame",
             source_ref="log://evt_0003",
-            supports=["hyp_001"],
             strength="strong",
-            created_at=CREATED_AT,
+            provenance="log_parser",
+            observed_at=CREATED_AT,
         ),
         Evidence(
             evidence_id="ev_0002",
             kind="log_event",
             claim="Primary log event",
             source_ref="log://evt_0003",
-            supports=["hyp_001"],
             strength="strong",
-            created_at=CREATED_AT,
+            provenance="log_parser",
+            observed_at=CREATED_AT,
         ),
         Evidence(
             evidence_id="ev_0003",
             kind="source_code",
             claim="Source range",
             source_ref=SOURCE_REF,
-            supports=["hyp_001"],
             strength="strong",
+            provenance="ast_index",
             tool_call_id="call_1",
-            created_at=CREATED_AT,
+            observed_at=CREATED_AT,
         ),
     ]
     hypothesis = Hypothesis(
         hypothesis_id="hyp_001",
         statement="Exception originates at OrderService.updateStatus",
         status=hypothesis_status,
+        basis_evidence_ids=[item.evidence_id for item in evidence],
         evidence_ids=[item.evidence_id for item in evidence],
-        missing_evidence=[],
+        missing_requirement_ids=[],
+        ranking_score=5,
+    )
+    run_confirmed = (
+        hypothesis_status == "confirmed" and state is not RuntimeState.FAILED
+    )
+    evaluation = EvaluationResult(
+        hypotheses=[
+            HypothesisEvaluation(
+                hypothesis_id="hyp_001",
+                status=hypothesis_status,
+                qualifies=hypothesis_status in {"supported", "confirmed"},
+                supporting_evidence_ids=[item.evidence_id for item in evidence],
+                ranking_score=5,
+            )
+        ],
+        top_hypothesis_id="hyp_001",
+        run_confirmed=run_confirmed,
     )
     return RunResult(
         incident_id="inc_test",
@@ -78,6 +98,7 @@ def _result(
         stop_reason=stop,
         hypotheses=[hypothesis],
         evidence=evidence,
+        evaluation=evaluation,
         tool_calls=[
             ToolCallRecord(
                 tool_call_id="call_1",
@@ -133,21 +154,30 @@ def test_build_confirmed_report() -> None:
     parsed = LogParser().parse(LOG_FIXTURE)
     report = build_report(_result(), parsed, REPO_FIXTURE)
 
-    assert report.schema_version == "0.2"
+    assert report.schema_version == "0.3"
     assert report.status == "confirmed"
     assert report.incident_id == "inc_test"
     assert report.run_id == "run_test"
-    assert report.root_causes
-    root = report.root_causes[0]
-    assert root.hypothesis_id == "hyp_001"
-    assert root.source_refs == ["log://evt_0003", SOURCE_REF]
+    assert report.hypotheses
+    hypothesis = report.hypotheses[0]
+    assert hypothesis.hypothesis_id == "hyp_001"
+    assert hypothesis.status == "confirmed"
+    assert hypothesis.ranking_score == 5
+    assert set(source.source_ref for source in report.sources) == {
+        "log://evt_0003",
+        SOURCE_REF,
+    }
     assert report.sources
     assert all(source.verified for source in report.sources)
+    assert report.verification.environment == "none"
     assert report.stop.state == "COMPLETED"
     assert report.stop.reason == "evidence_sufficient"
     assert report.budget_usage["tool_calls"] == 1
     assert report.validation.citations_valid is True
     assert report.validation.evidence_ids_valid is True
+    assert report.validation.hypotheses_valid is True
+    assert report.validation.remediation_grounded is True
+    assert report.validation.verification_labeled is True
     assert report.validation.status_consistent is True
 
 
@@ -156,12 +186,15 @@ def test_report_json_and_markdown() -> None:
     report = build_report(_result(), parsed, REPO_FIXTURE)
 
     data = json.loads(report.model_dump_json())
-    assert data["schema_version"] == "0.2"
-    assert data["validation"]["citations_valid"] is True
+    assert data["schema_version"] == "0.3"
+    assert "root_causes" not in data
+    assert data["validation"]["hypotheses_valid"] is True
 
     markdown = render_markdown(report)
     assert "# TraceMind 诊断报告" in markdown
-    assert "## 根因候选" in markdown
+    assert "## 鉴别诊断" in markdown
+    assert "## 验证过程" in markdown
+    assert "## 修复方案" in markdown
     assert "## 证据来源" in markdown
     assert "OrderService.java" in markdown
     assert "## 工具调用" in markdown
@@ -181,6 +214,8 @@ def test_markdown_template_handles_empty_sections() -> None:
     report = build_report(result, LogParser().parse(LOG_FIXTURE), REPO_FIXTURE)
     markdown = render_markdown(report)
 
-    assert "无支持的根因候选。" in markdown
+    assert report.status == "insufficient_data"
+    assert "No supported root cause candidate was produced." in markdown
+    assert "无假设。" in markdown
     assert "- （无）" in markdown
     assert "citations_valid: True" in markdown

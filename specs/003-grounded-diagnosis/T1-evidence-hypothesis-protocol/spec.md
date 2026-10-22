@@ -1,7 +1,7 @@
 # T1 — 证据账本与假设协议 Spec
 
 - **任务 ID**：T1
-- **状态**：planned
+- **状态**：implemented（过渡兼容已由 T4 清理）
 - **依赖**：无
 - **下游**：T2、T3、T4、T5、T6、T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -54,7 +54,7 @@ v0.3 要求 LLM 自主提出假设，但假设必须基于真实证据。T1 先�
 | FR-T1-07 | 工具调用元数据 `hypothesis_id`/`requirement_id` 必须成对、指向真实对象；未绑定证据不能覆盖 requirement | must |
 | FR-T1-08 | 确定性 evaluator 计算覆盖、contradicted、qualifies、run 级 confirmed、排序分 | must |
 | FR-T1-09 | 至少 2 个假设且替代假设全部 contradicted 才能 run 级 confirmed | must |
-| FR-T1-10 | 拒绝未接地假设、非法 assessment、重复 assessment、越界/伪造 ID | must |
+| FR-T1-10 | 拒绝未接地假设、越界/伪造 ID；非法 assessment 按条拒绝（全批无效才失败），批内重复拒绝，同目标重评修订 | must |
 | FR-T1-11 | 假设/requirement 数量受预算限制（默认 6/5） | must |
 | FR-T1-12 | 所有控制工具调用经过 ToolExecutor 审计 | must |
 | FR-T1-13 | 当 run 上下文要求同线程日志上下文时，confirmed 需有已绑定并评估、且线程号匹配的 `log_thread_context` 证据 | must |
@@ -93,11 +93,13 @@ class EvidenceProvenance(StrEnum):
 | `tool_call_id` | str \| None | 工具证据非空 |
 | `observed_at` | str | ISO-8601 UTC |
 | `independence_group` | str \| None | 默认 `kind:source_ref` |
-| `bound_hypothesis_id` | str \| None | 来自工具元数据 |
+| `bound_hypothesis_id` | str \| None | 首个绑定，来自工具元数据 |
 | `bound_requirement_id` | str \| None | 必须有 hypothesis |
+| `bindings` | list[EvidenceBinding] | 同一事实可绑定多个 hypothesis/requirement |
 | `content` | dict | 脱敏/截断后的结构化结果 |
 
-- `supports` 字段在 v0.3 不再承载假设关联；关联由 `bound_*`、basis 和 assessment 决定。
+- `supports` 字段在 v0.3 不再承载假设关联；关联由 `bindings`、basis 和 assessment 决定。
+- 一个真实工具事实可以被多个 hypothesis 的多个 requirement 复用；是否支持某个 requirement 仍由针对该绑定的 assessment 决定。
 - 旧测试如依赖 `supports` 需迁移，不允许同时保留两套语义。
 
 ### 5.2 EvidenceLedger
@@ -217,17 +219,28 @@ class Hypothesis(BaseModel):
 }
 ```
 
-- `evidence_id` 与 `source_ref` 二选一。source_ref 必须在该 hypothesis+requirement 的已绑定证据中**唯一**匹配；零条或多条都拒绝。
+- `evidence_id` 与 `source_ref` 二选一。source_ref 先在当前 hypothesis+requirement 的已绑定证据中**唯一**匹配；零条或多条时，若存在唯一一条同 source_ref、带 tool_call_id、kind 匹配的未绑定工具证据，则自动复用到该 requirement；否则拒绝。
+- 工具证据（`tool_call_id` 非空）可按需复用到新的 requirement；纯 basis 证据不能通过评估满足 requirement。
 
 校验：
 
-1. 1–4 条；hypothesis/requirement 存在；evidence 由 `evidence_id` 或 `source_ref` 解析得到。
-2. 解析后的 evidence 的 `bound_hypothesis_id`/`bound_requirement_id` 必须匹配，且 `kind` 属于 requirement 的 `evidence_kinds`。
+1. 每次 1–4 条；hypothesis/requirement 必须存在。
+2. 解析后的 evidence 必须最终绑定到该 hypothesis+requirement，且 `kind` 属于 requirement 的 `evidence_kinds`。
 3. verdict ∈ supports/refutes/neutral；rationale 非空、≤500 字。
-4. 同一 `(hypothesis_id, requirement_id, 解析后 evidence_id)` 不得重复。
-5. 不能引用 basis 证据来满足 requirement。
+4. 同一批内同一 `(hypothesis_id, requirement_id, evidence_id)` 重复时，保留首条，后续条目进入 `rejected[]`。
+5. 单条非法只拒绝该条，合法条目仍然生效；整批全部无效才返回 `INVALID_ASSESSMENT`。
+6. 跨调用重评同一目标不视为重复：更新已有 assessment 的 verdict/rationale，写入 `revised_at`，返回在 `revised_assessment_ids`；最新判断覆盖旧判断。
+7. 不能引用 basis 证据来满足 requirement。
 
-失败返回 `INVALID_ASSESSMENT`。
+返回：
+
+```json
+{
+  "assessment_ids": ["asm_0001"],
+  "revised_assessment_ids": ["asm_0002"],
+  "rejected": [{"index": 2, "reason": "INVALID_ASSESSMENT: ..."}]
+}
+```
 
 ### 5.6 工具绑定元数据
 
@@ -284,11 +297,11 @@ INVALID_ASSESSMENT
 | AC-T1-02 | 无 basis / basis 不存在或 source_ref 无法解析 / 无 discriminating requirement 的假设被拒绝 | `test_hypothesis_protocol.py` |
 | AC-T1-03 | 合法假设（ID 或 source_ref basis）获得 runtime ID 和 requirement IDs | 同上 |
 | AC-T1-04 | assessment 引用未绑定/不存在证据、歧义 source_ref 或 kind 不匹配被拒绝 | 同上 |
-| AC-T1-05 | 重复 assessment（含 source_ref 解析后重复）被拒绝 | 同上 |
+| AC-T1-05 | 同批重复 assessment 只保留首条并进入 `rejected[]`；跨调用重评修订原判断并返回 `revised_assessment_ids` | 同上 |
 | AC-T1-06 | 工具元数据成对校验，绑定写入 result/audit | `test_tool_binding.py` |
 | AC-T1-07 | 单假设 qualifies 但替代未排除 → 不 confirmed | `test_grounded_evaluator.py` |
 | AC-T1-08 | 全部 requirements 满足 + 替代 contradicted + 三类来源 → confirmed | 同上 |
-| AC-T1-09 | refute 使假设 contradicted，且不能被后续 supports 覆盖 | 同上 |
+| AC-T1-09 | 评估集中存在 refute 时假设为 contradicted；verdict 可经重评修订，但修订前 refute 不会被另一条并存 supports 抵消 | 同上 |
 | AC-T1-10 | ranking_score 确定性、可解释、无 LLM confidence | 同上 |
 | AC-T1-11 | 假设/requirement 超限被拒绝 | `test_hypothesis_protocol.py` |
 | AC-T1-12 | 控制工具调用进入执行器审计，不直接写 evidence | `test_tool_binding.py` |
@@ -301,7 +314,7 @@ INVALID_ASSESSMENT
 - `tests/unit/test_evidence_ledger.py`
   - 创建/检索/按 source_ref/按 requirement 查询。
   - 相同 (kind, source_ref) 去重。
-  - bind 升级未绑定证据并写入 tool_call_id；重复绑定幂等且不覆盖 tool_call_id；不同 requirement 绑定拒绝。
+  - bind 升级未绑定证据并写入 tool_call_id；重复绑定幂等且不覆盖 tool_call_id；同一事实可追加绑定到其他 hypothesis/requirement。
   - 超长 content 截断标记。
 - `tests/unit/test_hypothesis_protocol.py`
   - 合法假设（ID basis / source_ref basis）、无 basis、伪造 basis、无 discriminating、非法 evidence_kinds、超限。
@@ -309,12 +322,14 @@ INVALID_ASSESSMENT
   - 模型拒绝额外字段/status。
 - `tests/unit/test_hypothesis_protocol.py`（assessment）
   - evidence_id 与 source_ref 二选一；source_ref 唯一解析；零条/多条拒绝。
-  - 解析后重复 assessment 拒绝。
+  - 同一批内重复 assessment 保留首条并拒绝后续条目。
+  - 部分合法批次保留合法项，非法项进入 `rejected[]`。
+  - 跨调用重评同一目标更新 verdict/rationale 并返回 `revised_assessment_ids`。
 - `tests/unit/test_grounded_evaluator.py`
   - 全覆盖 + 单假设 + 无替代 → 不 confirmed。
   - 全覆盖 + 替代 contradicted + 三类来源 → confirmed。
   - 两个 qualifies → 都不 confirmed，报告歧义。
-  - refute 后 supports 不覆盖。
+  - 同一评估集中 refute 与 supports 并存时仍为 contradicted；工作区重评修订旧 verdict 后可按最新判断重新评估。
   - `require_log_thread_context=true` 且无已评估上下文 → 不 confirmed；有上下文 → confirmed。
   - `required_log_thread=exec-7` 但唯一上下文属于另一线程 → 不 confirmed。
   - 排序分公式与同分排序。
@@ -342,7 +357,7 @@ INVALID_ASSESSMENT
 **开放问题**
 
 - requirement 是否允许只有 `tool_result` 类泛化证据？v0.3 不允许；必须使用具体 kind。
-- assessment 是否允许删除/撤回？v0.3 不提供撤回；refute 终止。
+- assessment 是否允许删除/撤回？v0.3 不提供删除；后续评估会修订同一目标，最新 verdict 生效。
 - basis 是否必须包含日志证据？不强制；但初始证据会提供日志/源码，确认门槛另有三类来源要求。
 
 ## 9. 验证命令
@@ -358,7 +373,11 @@ uv run mypy src
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| — | 待实现后回填 | PLANNED |
+| 2026-10-22 | `uv run pytest tests/unit/test_evidence_ledger.py tests/unit/test_hypothesis_protocol.py tests/unit/test_grounded_evaluator.py tests/unit/test_tool_binding.py -q` | 52 passed |
+| 2026-10-22 | `uv run pytest -q` | 198 passed, 2 skipped（live opt-in） |
+| 2026-10-22 | `uv run ruff check .` | All checks passed |
+| 2026-10-22 | `uv run mypy src` | Success, 40 source files |
+| 2026-10-22 | 旧 `supports`/legacy evaluator | 仍作为临时兼容层保留，供 v0.2 runtime 使用；T4 迁移主循环时删除 |
 
 ## 11. 变更记录
 
@@ -366,3 +385,4 @@ uv run mypy src
 |---|---|
 | 2026-10-22 | 创建 T1 spec：证据账本、假设/评估协议、绑定元数据、确定性 evaluator |
 | 2026-10-22 | 增加同线程上下文 kind/确认门槛（含 required_log_thread）与绑定 tool_call_id 规则 |
+| 2026-10-22 | 实现后修订：证据多绑定；工具证据自动复用；assessment 批内部分接受、同批去重、跨调用修订；AC-T1-05/09 与测试计划同步 |

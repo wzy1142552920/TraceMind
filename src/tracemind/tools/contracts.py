@@ -6,12 +6,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from tracemind.core.models import ParsedLog
 from tracemind.indexing.java_index import JavaIndex
+
+if TYPE_CHECKING:
+    from tracemind.diagnosis.workspace import DiagnosisWorkspace
+    from tracemind.verification import ReadOnlyVerificationBackend
 
 
 class ToolErrorCode(StrEnum):
@@ -23,6 +27,19 @@ class ToolErrorCode(StrEnum):
     OUTPUT_LIMIT = "OUTPUT_LIMIT"
     DUPLICATE_CALL = "DUPLICATE_CALL"
     TOOL_ERROR = "TOOL_ERROR"
+    HYPOTHESIS_NOT_GROUNDED = "HYPOTHESIS_NOT_GROUNDED"
+    INVALID_BINDING = "INVALID_BINDING"
+    INVALID_ASSESSMENT = "INVALID_ASSESSMENT"
+    INVALID_REMEDIATION = "INVALID_REMEDIATION"
+
+
+class EvidenceToolMeta(BaseModel):
+    """Optional binding metadata accepted by evidence-producing tools."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hypothesis_id: str | None = None
+    requirement_id: str | None = None
 
 
 class ToolRequest(BaseModel):
@@ -43,6 +60,8 @@ class ToolResult(BaseModel):
     error_code: str | None = None
     error_message: str | None = None
     source_ref: str | None = None
+    bound_hypothesis_id: str | None = None
+    bound_requirement_id: str | None = None
     duration_ms: int = 0
     truncated: bool = False
 
@@ -85,6 +104,8 @@ class ToolContext:
     java_index: JavaIndex | None = None
     repo_root: Path | None = None
     log_root: Path | None = None
+    workspace: DiagnosisWorkspace | None = None
+    verification_backend: ReadOnlyVerificationBackend | None = None
 
 
 ToolHandler = Callable[[ToolContext, BaseModel], ToolHandlerResult]
@@ -102,3 +123,5 @@ class AuditEvent(BaseModel):
     error_code: str | None = None
     duration_ms: int
     source_ref: str | None = None
+    bound_hypothesis_id: str | None = None
+    bound_requirement_id: str | None = None

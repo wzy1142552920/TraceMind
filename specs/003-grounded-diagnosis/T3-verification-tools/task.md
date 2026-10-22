@@ -2,7 +2,7 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T3
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T4、T5、T6、T7
 
@@ -50,24 +50,24 @@
 
 ## 2. 交付物
 
-- [ ] `src/tracemind/verification/`（协议、Fake backend、数据加载）
-- [ ] `src/tracemind/tools/verification.py`（db 工具）
-- [ ] `src/tracemind/cli/main.py` `--verification-data`
-- [ ] run_meta verification 元数据
-- [ ] `tests/unit/test_fake_verification.py`
-- [ ] `tests/unit/test_db_tools.py`
-- [ ] `tests/e2e/test_cli_verification.py`
-- [ ] 受影响的 registry/executor/CLI 测试适配
+- [x] `src/tracemind/verification/`（协议、Fake backend、数据加载）
+- [x] `src/tracemind/tools/verification.py`（db 工具）
+- [x] `src/tracemind/cli/main.py` `--verification-data`
+- [x] run_meta verification 元数据
+- [x] `tests/unit/test_fake_verification.py`
+- [x] `tests/unit/test_db_tools.py`
+- [x] `tests/e2e/test_cli_verification.py`
+- [x] 受影响的 registry/executor/CLI 测试适配
 
 ## 3. Definition of Done
 
-- [ ] AC-T3-01 至 AC-T3-12 全部满足。
-- [ ] 只有 `describe_table` 和主键 `get_row`，无任意 SQL/写入口。
-- [ ] 未知表/列/非法 key 拒绝；敏感列脱敏。
-- [ ] 无 backend 时 db 工具不出现在工具目录。
-- [ ] 非法 `--verification-data` 在解析/索引前退出 2，不创建 run 目录。
-- [ ] 所有 DB 调用可审计，结果环境为 fixture。
-- [ ] 全量离线测试、ruff、mypy 通过。
+- [x] AC-T3-01 至 AC-T3-12 全部满足。
+- [x] 只有 `describe_table` 和主键 `get_row`，无任意 SQL/写入口。
+- [x] 未知表/列/非法 key 拒绝；敏感列脱敏。
+- [x] 无 backend 时 db 工具不出现在工具目录。
+- [x] 非法 `--verification-data` 在解析/索引前退出 2，不创建 run 目录。
+- [x] 所有 DB 调用可审计，结果环境为 fixture。
+- [x] 全量离线测试、ruff、mypy 通过。
 
 ## 4. 验证命令
 
@@ -90,4 +90,8 @@ uv run mypy src
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | 待实现 | PLANNED | — |
+| 2026-10-22 | Claude | T3 定向 pytest | 57 passed | 数据加载、DB 工具、CLI |
+| 2026-10-22 | Claude | 绑定/DB 定向 pytest | 27 passed | 含 DB 绑定元数据 |
+| 2026-10-22 | Claude | `uv run pytest -q` | 279 passed, 2 skipped | live 测试保持 opt-in |
+| 2026-10-22 | Claude | `uv run ruff check .` | passed | — |
+| 2026-10-22 | Claude | `uv run mypy src` | passed | 45 source files |

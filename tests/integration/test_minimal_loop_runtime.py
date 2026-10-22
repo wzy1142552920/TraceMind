@@ -1,4 +1,4 @@
-"""Integration tests for the v0.1 minimal diagnosis runtime."""
+"""Integration tests for the grounded diagnosis runtime happy path."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def _run(provider: object, budget: Budget | None = None):
     )
 
 
-def test_happy_path_confirms_hypothesis() -> None:
+def test_happy_path_confirms_grounded_hypothesis() -> None:
     result = _run(MockProvider.from_script(MOCK_SCRIPT))
 
     assert result.state is RuntimeState.COMPLETED
@@ -57,28 +57,65 @@ def test_happy_path_confirms_hypothesis() -> None:
     assert result.incident_id.startswith("inc_")
     assert result.run_id.startswith("run_")
     assert result.service == "order-service"
+    assert result.evaluation.run_confirmed is True
+    assert result.evaluation.ambiguity is False
+    assert result.evaluation.top_hypothesis_id == "hyp_001"
 
-    hypothesis = result.hypotheses[0]
-    assert hypothesis.status == "confirmed"
-    assert hypothesis.missing_evidence == []
-    assert hypothesis.source_matches
+    confirmed = next(
+        item for item in result.hypotheses if item.hypothesis_id == "hyp_001"
+    )
+    contradicted = next(
+        item for item in result.hypotheses if item.hypothesis_id == "hyp_002"
+    )
+    assert confirmed.status == "confirmed"
+    assert confirmed.missing_requirement_ids == []
+    assert contradicted.status == "contradicted"
 
     kinds = {item.kind for item in result.evidence}
-    assert {"stack_frame", "log_event", "source_code"} <= kinds
+    assert {
+        "log_event",
+        "log_thread_context",
+        "stack_frame",
+        "source_code",
+        "sql",
+    } <= kinds
     assert any(
         item.kind == "source_code" and "OrderService.java" in item.source_ref
         for item in result.evidence
     )
+    context = next(
+        item
+        for item in result.evidence
+        if item.kind == "log_thread_context"
+    )
+    assert context.bound_hypothesis_id == "hyp_001"
+    assert context.bound_requirement_id == "hyp_001_req_01"
+    assert context.tool_call_id == "call_3"
+    assert context.content["thread"] == "http-nio-8080-exec-7"
 
     assert [record.tool_name for record in result.tool_calls] == [
+        "diagnosis.propose_hypothesis",
+        "diagnosis.propose_hypothesis",
+        "logs.get_thread_context",
         "code.find_symbol",
-        "logs.search",
+        "code.find_sql",
+        "diagnosis.assess_evidence",
+        "diagnosis.propose_remediation",
     ]
     assert all(record.ok for record in result.tool_calls)
+    assert result.rejected_hypotheses == []
+    assert result.rejected_remediations == []
+    assert [action.hypothesis_id for action in result.remediation_actions] == [
+        "hyp_001"
+    ]
+    assert result.remediation_actions[0].type == "code"
     assert result.budget_usage == {
-        "iterations": 1,
-        "llm_calls": 1,
-        "tool_calls": 2,
+        "iterations": 3,
+        "llm_calls": 3,
+        "tool_calls": 7,
+        "hypotheses": 2,
+        "assessments": 3,
+        "remediation_actions": 1,
     }
 
     event_types = {event.event_type for event in result.events}
@@ -86,22 +123,26 @@ def test_happy_path_confirms_hypothesis() -> None:
         "diagnosis.started",
         "state.changed",
         "hypothesis.created",
+        "hypothesis.updated",
+        "assessment.created",
         "evidence.created",
+        "evidence.bound",
         "llm.called",
         "tool.called",
+        "remediation.created",
         "agent.stop_triggered",
     } <= event_types
 
 
-def test_empty_plan_stops_with_no_progress() -> None:
+def test_empty_plan_repairs_then_stops_with_no_progress() -> None:
     result = _run(MockProvider([]))
 
     assert result.state is RuntimeState.INSUFFICIENT_DATA
     assert result.stop_reason is StopReason.NO_PROGRESS
+    assert result.budget_usage["iterations"] == 3
     assert result.budget_usage["llm_calls"] == 3
     assert result.budget_usage["tool_calls"] == 0
-    assert result.hypotheses[0].status == "supported"
-    assert result.hypotheses[0].missing_evidence == ["source_code"]
+    assert result.hypotheses == []
     assert sum(
         1 for event in result.events if event.event_type == "agent.repair"
     ) == 2
@@ -159,15 +200,14 @@ class DuplicateThenEmptyProvider:
     ) -> LLMResponse:
         self.calls += 1
         if self.calls == 1:
-            call = ToolCall(
-                id="call_1",
-                name="logs.search",
-                arguments={"query": "rows=0"},
-            )
             return LLMResponse(
                 content="",
                 tool_calls=[
-                    call,
+                    ToolCall(
+                        id="call_1",
+                        name="logs.search",
+                        arguments={"query": "rows=0"},
+                    ),
                     ToolCall(
                         id="call_2",
                         name="logs.search",
@@ -187,7 +227,7 @@ def test_duplicate_tool_call_is_not_executed_twice() -> None:
     assert len(result.tool_calls) == 2
     assert result.tool_calls[1].error_code == "DUPLICATE_CALL"
     log_evidence = [item for item in result.evidence if item.kind == "log_event"]
-    assert len(log_evidence) == 2  # one seed event + one tool result
+    assert len(log_evidence) == 2  # primary seed event + one tool result
 
 
 class FailingProvider:
@@ -208,5 +248,5 @@ def test_provider_error_fails_without_crashing() -> None:
 
     assert result.state is RuntimeState.FAILED
     assert result.stop_reason is StopReason.ERROR
-    assert result.hypotheses[0].status == "supported"
+    assert result.hypotheses == []
     assert any(event.event_type == "llm.error" for event in result.events)

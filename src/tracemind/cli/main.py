@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import typer
 from rich.console import Console
@@ -27,6 +27,11 @@ from tracemind.llm.mock import MockProvider
 from tracemind.llm.provider import LLMProvider, LLMProviderError
 from tracemind.log_analysis.parser import LogParser
 from tracemind.storage.run_store import RunStore
+from tracemind.verification import (
+    FakeVerificationBackend,
+    VerificationDataError,
+    load_verification_data,
+)
 
 app = typer.Typer(
     name="tracemind",
@@ -131,18 +136,29 @@ def diagnose(
         "--mock-script",
         help="Path to a mock response script (provider=mock).",
     ),
+    verification_data: Path | None = typer.Option(
+        None,
+        "--verification-data",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help=(
+            "Fixture-only JSON data enabling read-only DB verification tools."
+        ),
+    ),
     output_dir: Path = typer.Option(
         Path(".tracemind/runs"),
         "--output-dir",
         help="Directory for run artifacts.",
     ),
     max_iterations: int = typer.Option(
-        6,
+        10,
         "--max-iterations",
         help="Maximum planning iterations.",
     ),
     max_tool_calls: int = typer.Option(
-        8,
+        16,
         "--max-tool-calls",
         help="Maximum tool calls.",
     ),
@@ -183,6 +199,15 @@ def diagnose(
     ),
 ) -> None:
     """Diagnose a Java incident from a log file and a local repository."""
+    verification_backend: FakeVerificationBackend | None = None
+    verification_meta: dict[str, Any] | None = None
+    if verification_data is not None:
+        try:
+            verification_backend = load_verification_data(verification_data)
+        except VerificationDataError as exc:
+            _fail(f"verification data error: {exc}", code=2)
+        verification_meta = verification_backend.metadata()
+
     provider_name = provider.lower()
     settings: LLMSettings | None = None
 
@@ -229,6 +254,7 @@ def diagnose(
         provider_name=provider_name,
         model=model_label,
         repair_attempts=repair_attempts,
+        verification_backend=verification_backend,
     )
     try:
         result = runtime.run(
@@ -238,6 +264,7 @@ def diagnose(
             llm,
             Budget(
                 max_iterations=max_iterations,
+                max_llm_calls=max_iterations + 2,
                 max_tool_calls=max_tool_calls,
             ),
         )
@@ -247,7 +274,7 @@ def diagnose(
     try:
         report = build_report(result, parsed_log, repo)
         run_meta = {
-            "schema_version": "0.2",
+            "schema_version": "0.3",
             "run_id": result.run_id,
             "incident_id": result.incident_id,
             "service": result.service,
@@ -271,6 +298,17 @@ def diagnose(
             "state": result.state.value,
             "stop_reason": result.stop_reason.value,
             "budget_usage": result.budget_usage,
+            "hypothesis_count": len(result.hypotheses),
+            "assessment_count": len(result.assessments),
+            "remediation_count": len(result.remediation_actions),
+            "verification": {
+                **report.verification.model_dump(),
+                "backend_tables": (
+                    verification_meta.get("tables", [])
+                    if verification_meta is not None
+                    else []
+                ),
+            },
             "index": {
                 "files": index_stats.files_indexed,
                 "symbols": index_stats.symbols_indexed,
@@ -284,6 +322,14 @@ def diagnose(
     report_path = run_dir / "report.md"
     exit_code = _exit_code(result, report)
 
+    top_hypothesis = next(
+        (
+            hypothesis
+            for hypothesis in report.hypotheses
+            if hypothesis.status in {"confirmed", "supported"}
+        ),
+        None,
+    )
     if json_output:
         summary = {
             "run_id": result.run_id,
@@ -294,6 +340,12 @@ def diagnose(
             "stop_reason": result.stop_reason.value,
             "evidence_count": len(result.evidence),
             "tool_calls": len(result.tool_calls),
+            "hypothesis_count": len(report.hypotheses),
+            "top_hypothesis": (
+                top_hypothesis.model_dump() if top_hypothesis else None
+            ),
+            "remediation_count": len(report.remediation_plan),
+            "verification_environment": report.verification.environment,
             "llm_usage": result.llm_usage.model_dump(),
             "report_path": str(report_path),
             "run_dir": str(run_dir),
@@ -302,16 +354,23 @@ def diagnose(
     else:
         console.print(f"[bold]TraceMind[/bold] run={result.run_id}")
         console.print(f"Status: [bold]{report.status}[/bold]")
-        if report.root_causes:
+        if top_hypothesis is not None:
             console.print(
-                f"Top candidate: {report.root_causes[0].statement}",
+                "Top hypothesis: "
+                f"[{top_hypothesis.status}] "
+                f"{top_hypothesis.statement}",
                 markup=False,
             )
         else:
-            console.print("Top candidate: (none)")
+            console.print("Top hypothesis: (none)")
         console.print(
+            f"Hypotheses: {len(report.hypotheses)} | "
             f"Evidence: {len(result.evidence)} | "
-            f"Tool calls: {len(result.tool_calls)}"
+            f"Tool calls: {len(result.tool_calls)} | "
+            f"Remediation: {len(report.remediation_plan)}"
+        )
+        console.print(
+            f"Verification: {report.verification.environment}"
         )
         usage = result.llm_usage
         console.print(
@@ -326,6 +385,9 @@ def diagnose(
             "Validation: "
             f"citations={report.validation.citations_valid}, "
             f"evidence_ids={report.validation.evidence_ids_valid}, "
+            f"hypotheses={report.validation.hypotheses_valid}, "
+            f"remediation={report.validation.remediation_grounded}, "
+            f"verification={report.validation.verification_labeled}, "
             f"status={report.validation.status_consistent}"
         )
         console.print(f"Report: {report_path}")

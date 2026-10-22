@@ -15,14 +15,15 @@ from tracemind.llm.messages import LLMResponse, Message
 
 pytestmark = pytest.mark.live
 
+ROOT = Path(__file__).resolve().parents[2]
 LOG_FIXTURE = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "logs" / "basic" / "incident.log"
+    ROOT / "fixtures" / "logs" / "v03-c1-missing-row" / "incident.log"
 )
 REPO_FIXTURE = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures"
-    / "repos"
-    / "minimal-order-service"
+    ROOT / "fixtures" / "repos" / "minimal-order-service-fixed"
+)
+VERIFICATION_FIXTURE = (
+    ROOT / "fixtures" / "verification" / "v03-c1-missing-row.json"
 )
 runner = CliRunner()
 
@@ -58,14 +59,16 @@ def test_live_cli_completes_fixture(tmp_path: Path) -> None:
             "order-service",
             "--provider",
             "deepseek",
+            "--verification-data",
+            str(VERIFICATION_FIXTURE),
             "--output-dir",
             str(output_dir),
             "--max-iterations",
-            "4",
+            "8",
             "--max-tool-calls",
-            "6",
+            "12",
             "--llm-max-tokens",
-            "800",
+            "1200",
         ],
     )
 
@@ -80,17 +83,30 @@ def test_live_cli_completes_fixture(tmp_path: Path) -> None:
     } <= {path.name for path in run_dir.iterdir()}
 
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
-    assert report["schema_version"] == "0.2"
+    assert report["schema_version"] == "0.3"
     assert report["status"] in {"confirmed", "probable"}
-    assert report["validation"]["citations_valid"] is True
-    assert report["validation"]["evidence_ids_valid"] is True
+    assert report["verification"]["environment"] == "fixture"
+    assert report["verification"]["backend"] == "fake"
+    for flag in (
+        "citations_valid",
+        "evidence_ids_valid",
+        "hypotheses_valid",
+        "remediation_grounded",
+        "verification_labeled",
+        "status_consistent",
+    ):
+        assert report["validation"][flag] is True, (
+            flag,
+            report["validation"].get("errors"),
+        )
     kinds = {
         source["kind"]
         for source in report["sources"]
         if isinstance(source, dict) and "kind" in source
     }
-    assert {"stack_frame", "log_event", "source_code"} <= kinds
+    assert {"log_thread_context", "source_code", "db_row"} <= kinds
     assert report["tool_calls"]
+    assert report["remediation_plan"]
     assert report["llm_usage"]["calls"] >= 1
     assert report["llm_usage"]["input_tokens"] is not None
 

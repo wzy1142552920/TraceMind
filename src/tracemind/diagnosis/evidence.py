@@ -1,26 +1,160 @@
-"""Evidence, hypothesis, tool-call, and run-result models."""
+"""Evidence, hypothesis, assessment, tool-call, and run-result models."""
 
 from __future__ import annotations
 
-from typing import Any
+from enum import StrEnum
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from tracemind.diagnosis.state import RuntimeEvent, RuntimeState, StopReason
-from tracemind.indexing.java_index import SourceMatch
+
+
+class EvidenceKind(StrEnum):
+    """Structured evidence categories accepted by the v0.3 ledger."""
+
+    LOG_EVENT = "log_event"
+    LOG_THREAD_CONTEXT = "log_thread_context"
+    STACK_FRAME = "stack_frame"
+    SOURCE_CODE = "source_code"
+    CALL_PATH = "call_path"
+    SQL = "sql"
+    ANNOTATION = "annotation"
+    CONFIG = "config"
+    DB_ROW = "db_row"
+    DB_SCHEMA = "db_schema"
+
+
+class EvidenceProvenance(StrEnum):
+    """Where an evidence item originally came from."""
+
+    LOG_PARSER = "log_parser"
+    AST_INDEX = "ast_index"
+    TOOL = "tool"
+    FAKE_VERIFICATION = "fake_verification"
+
+
+class HypothesisStatus(StrEnum):
+    """Deterministic status assigned to a root-cause hypothesis."""
+
+    CANDIDATE = "candidate"
+    SUPPORTED = "supported"
+    CONTRADICTED = "contradicted"
+    CONFIRMED = "confirmed"
+    INSUFFICIENT_DATA = "insufficient_data"
+
+
+class AssessmentVerdict(StrEnum):
+    """How a real evidence item affects one hypothesis requirement."""
+
+    SUPPORTS = "supports"
+    REFUTES = "refutes"
+    NEUTRAL = "neutral"
+
+
+class EvidenceBinding(BaseModel):
+    """One hypothesis requirement this evidence item was obtained for."""
+
+    hypothesis_id: str
+    requirement_id: str
+    tool_call_id: str | None = None
 
 
 class Evidence(BaseModel):
     """A reviewable fact collected during a diagnosis run."""
 
     evidence_id: str
-    kind: str
+    kind: EvidenceKind
     claim: str
     source_ref: str
-    supports: list[str] = Field(default_factory=list)
-    strength: str = "strong"
+    strength: Literal["strong", "medium", "weak"] = "strong"
+    provenance: EvidenceProvenance
     tool_call_id: str | None = None
-    created_at: str
+    observed_at: str
+    independence_group: str | None = None
+    bound_hypothesis_id: str | None = None
+    bound_requirement_id: str | None = None
+    bindings: list[EvidenceBinding] = Field(default_factory=list)
+    content: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _derive_groups(self) -> Self:
+        if self.independence_group is None:
+            self.independence_group = f"{self.kind}:{self.source_ref}"
+        if self.bound_requirement_id is not None and self.bound_hypothesis_id is None:
+            raise ValueError("bound_requirement_id requires bound_hypothesis_id")
+        if (
+            self.bound_hypothesis_id is not None
+            and self.bound_requirement_id is not None
+            and not self.has_binding(
+                self.bound_hypothesis_id,
+                self.bound_requirement_id,
+            )
+        ):
+            self.bindings = [
+                *self.bindings,
+                EvidenceBinding(
+                    hypothesis_id=self.bound_hypothesis_id,
+                    requirement_id=self.bound_requirement_id,
+                ),
+            ]
+        return self
+
+    def has_binding(self, hypothesis_id: str, requirement_id: str) -> bool:
+        """Return whether this fact was obtained for a requirement."""
+        if (
+            self.bound_hypothesis_id == hypothesis_id
+            and self.bound_requirement_id == requirement_id
+        ):
+            return True
+        return any(
+            binding.hypothesis_id == hypothesis_id
+            and binding.requirement_id == requirement_id
+            for binding in self.bindings
+        )
+
+    def is_bound_to(self, hypothesis_id: str) -> bool:
+        """Return whether any requirement of the hypothesis owns this fact."""
+        if self.bound_hypothesis_id == hypothesis_id:
+            return True
+        return any(
+            binding.hypothesis_id == hypothesis_id
+            for binding in self.bindings
+        )
+
+    def add_binding(
+        self,
+        hypothesis_id: str,
+        requirement_id: str,
+        tool_call_id: str | None = None,
+    ) -> bool:
+        """Add another requirement binding; return whether it was new."""
+        for binding in self.bindings:
+            if (
+                binding.hypothesis_id == hypothesis_id
+                and binding.requirement_id == requirement_id
+            ):
+                if binding.tool_call_id is None and tool_call_id is not None:
+                    binding.tool_call_id = tool_call_id
+                return False
+        self.bindings.append(
+            EvidenceBinding(
+                hypothesis_id=hypothesis_id,
+                requirement_id=requirement_id,
+                tool_call_id=tool_call_id,
+            )
+        )
+        return True
+
+
+class EvidenceRequirement(BaseModel):
+    """A verification requirement declared by an LLM hypothesis."""
+
+    requirement_id: str
+    description: str
+    evidence_kinds: list[EvidenceKind]
+    discriminating: bool
+    suggested_tools: list[str] = Field(default_factory=list)
 
 
 class Hypothesis(BaseModel):
@@ -28,10 +162,109 @@ class Hypothesis(BaseModel):
 
     hypothesis_id: str
     statement: str
-    status: str = "candidate"
+    cause_chain: list[str] = Field(default_factory=list)
+    basis_evidence_ids: list[str] = Field(default_factory=list)
+    requirements: list[EvidenceRequirement] = Field(default_factory=list)
+    falsifiers: list[str] = Field(default_factory=list)
+    status: HypothesisStatus = HypothesisStatus.CANDIDATE
     evidence_ids: list[str] = Field(default_factory=list)
-    missing_evidence: list[str] = Field(default_factory=list)
-    source_matches: list[SourceMatch] = Field(default_factory=list)
+    assessment_ids: list[str] = Field(default_factory=list)
+    missing_requirement_ids: list[str] = Field(default_factory=list)
+    ranking_score: int = 0
+    source: Literal["llm"] = "llm"
+
+
+class EvidenceAssessment(BaseModel):
+    """An LLM's interpretation of a real, bound evidence item."""
+
+    assessment_id: str
+    hypothesis_id: str
+    requirement_id: str
+    evidence_id: str
+    verdict: AssessmentVerdict
+    rationale: str
+    created_at: str
+    revised_at: str | None = None
+
+
+class RequirementEvaluation(BaseModel):
+    """Deterministic coverage result for one requirement."""
+
+    requirement_id: str
+    satisfied: bool
+    discriminating: bool = False
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    refuting_evidence_ids: list[str] = Field(default_factory=list)
+
+
+class HypothesisEvaluation(BaseModel):
+    """Deterministic result for one hypothesis."""
+
+    hypothesis_id: str
+    status: HypothesisStatus
+    qualifies: bool
+    requirements: list[RequirementEvaluation] = Field(default_factory=list)
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    refuting_evidence_ids: list[str] = Field(default_factory=list)
+    missing_requirement_ids: list[str] = Field(default_factory=list)
+    ranking_score: int = 0
+    reasons: list[str] = Field(default_factory=list)
+
+
+class EvaluationResult(BaseModel):
+    """Run-level deterministic evaluation result."""
+
+    hypotheses: list[HypothesisEvaluation] = Field(default_factory=list)
+    top_hypothesis_id: str | None = None
+    run_confirmed: bool = False
+    ambiguity: bool = False
+
+    def for_hypothesis(self, hypothesis_id: str) -> HypothesisEvaluation | None:
+        """Return the evaluation entry for one hypothesis, if present."""
+        return next(
+            (
+                item
+                for item in self.hypotheses
+                if item.hypothesis_id == hypothesis_id
+            ),
+            None,
+        )
+
+
+class RejectedHypothesis(BaseModel):
+    """A grounded-hypothesis proposal rejected by the runtime protocol."""
+
+    statement: str
+    reason: str
+    error_code: str | None = None
+    tool_call_id: str | None = None
+    observed_at: str
+
+
+class RemediationAction(BaseModel):
+    """A deterministic, evidence-bound remediation suggestion."""
+
+    action_id: str
+    hypothesis_id: str
+    type: Literal["code", "config", "data", "ops", "test"]
+    title: str
+    description: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    target: str
+    risk: str
+    prerequisites: list[str] = Field(default_factory=list)
+    verification_steps: list[str] = Field(default_factory=list)
+
+
+class RejectedRemediation(BaseModel):
+    """A remediation action dropped by deterministic validation."""
+
+    hypothesis_id: str | None = None
+    title: str | None = None
+    error_code: str = "INVALID_REMEDIATION"
+    reason: str
+    tool_call_id: str | None = None
+    observed_at: str
 
 
 class ToolCallRecord(BaseModel):
@@ -88,6 +321,14 @@ class RunResult(BaseModel):
     stop_reason: StopReason
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
+    assessments: list[EvidenceAssessment] = Field(default_factory=list)
+    rejected_hypotheses: list[RejectedHypothesis] = Field(default_factory=list)
+    evaluation: EvaluationResult = Field(default_factory=EvaluationResult)
+    remediation_actions: list[RemediationAction] = Field(default_factory=list)
+    rejected_remediations: list[RejectedRemediation] = Field(
+        default_factory=list
+    )
+    verification_environment: str | None = None
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     llm_calls: list[LLMCallRecord] = Field(default_factory=list)
     llm_usage: LLMUsageSummary = Field(default_factory=LLMUsageSummary)

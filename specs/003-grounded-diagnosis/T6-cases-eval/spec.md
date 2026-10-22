@@ -1,7 +1,7 @@
 # T6 — 三 case 与 pytest 评测 Spec
 
 - **任务 ID**：T6
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T1、T2、T3、T4、T5
 - **下游**：T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -198,7 +198,7 @@ forbidden_thread_context_markers:
   - retry probe
 expected_evidence_refs:
   - "db://orders/id=10086"
-  - "repo://src/main/java/com/example/order/OrderMapper.java"
+  - "repo://src/main/java/com/example/order/OrderService.java"
 expected_evidence_kinds:
   - log_thread_context
   - source_code
@@ -210,17 +210,17 @@ expected_remediation_types:
   - test
 expected_remediation_target_keywords:
   - OrderService
-  - OrderMapper
 forbidden_tool_calls: []
 notes: "订单行不存在；修复应区分不存在与无变化，并补充测试。"
 ```
 
-- C2 关键词：duplicate / idempotent / already paid / 幂等 / 重复回调。
+- C2 关键词：duplicate / idempotent / already paid / 幂等 / 重复回调；Top-1 refs 指向 `OrderService.java`、`OrderMapper.java` 与 DB。
 - C3 关键词：default / stub / return 0 / 默认方法 / 未执行。
 - expected 只用于测试，runtime/prompt 不得读取。
-- 证据 refs 检查子集（允许额外证据）；C3 至少包含 `OrderMapper.java`。
+- 证据 refs 检查子集（允许额外证据）；C1/C2 期望 Service/DB 与对应代码证据，C3 至少包含 `OrderMapper.java`。
 - `expected_evidence_kinds` 检查 Top-1 已满足的 requirement 覆盖种类（子集）；每个 case 必须包含 `log_thread_context` 与至少一种代码证据（`source_code`/`call_path`/`sql`）。
 - 同线程上下文检查：证据 source_ref 的 thread 必须等于 `expected_thread`；上下文摘要不得包含 `forbidden_thread_context_markers`。
+- C1/C2 的替代假设（缺失 SQL 谓词、default stub、Service 忽略 rows）通过读取 `OrderMapper.java` / `OrderService.java` 反驳；这不要求出现在 Top-1 的 expected refs 中。
 
 ### 5.6 Mock 脚本
 
@@ -354,7 +354,14 @@ uv run mypy src
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| — | 待实现后回填 | PLANNED |
+| 2026-10-22 | T6 pytest（3 个文件） | PASS：49 passed |
+| 2026-10-22 | 全量 `pytest -q` | PASS：374 passed, 2 skipped |
+| 2026-10-22 | `ruff check .` | PASS |
+| 2026-10-22 | `mypy src` | PASS（48 source files） |
+
+指标：Top-1 3/3、Top-3 3/3、同线程上下文 3/3、代码证据 3/3、requirements 覆盖 3/3、引用 18/18（100%）、remediation 接地 6/6（100%）、DB 越权 0、fixture 标注 3/3。每 case 4 次 LLM 调用、11 次工具调用、5 次 assessment、2 条修复建议，全部 validation flag 为 true。详细结果见 [task.md §6](./task.md#6-验证结果实现后回填)。
+
+未达标项：无。
 
 ## 11. 变更记录
 
@@ -362,3 +369,4 @@ uv run mypy src
 |---|---|
 | 2026-10-22 | 创建 T6 spec：三 case、仓库变体、验证数据、Mock 脚本、pytest 评测与负向/防过拟合测试 |
 | 2026-10-22 | 日志加入跨线程噪声；评测增加同线程上下文+代码互证、上下文负向测试与 AC-15/16 |
+| 2026-10-22 | T6 实现完成：三 case 离线确认、49 项 T6 测试通过，指标全部达标 |

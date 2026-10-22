@@ -84,6 +84,59 @@ def test_find_unknown_symbol_returns_empty(index: TreeSitterJavaIndex) -> None:
     assert index.find_symbol("does.not.Exist") == []
 
 
+def test_class_and_method_annotations_are_indexed(index: TreeSitterJavaIndex) -> None:
+    service = [
+        symbol
+        for symbol in index.find_symbol("com.example.order.OrderService")
+        if symbol.symbol_type == "class"
+    ][0]
+    update = [
+        symbol
+        for symbol in index.find_symbol("OrderService.updateStatus")
+        if symbol.parameter_count == 2
+    ][0]
+    mapper = [
+        symbol
+        for symbol in index.find_symbol("com.example.order.OrderMapper")
+        if symbol.symbol_type == "interface"
+    ][0]
+    update_status = [
+        symbol
+        for symbol in index.find_symbol("OrderMapper.updateStatus")
+        if symbol.parameter_count == 2
+    ][0]
+
+    assert [annotation.name for annotation in service.annotations] == ["Service"]
+    assert update.parameter_count == 2
+    assert update.return_type == "int"
+    assert update.modifiers == ["public"]
+    assert "updateStatus(Long orderId, String status)" in (update.signature or "")
+    assert [annotation.name for annotation in mapper.annotations] == ["Mapper"]
+    assert [annotation.name for annotation in update_status.annotations] == ["Update"]
+
+
+def test_fields_are_indexed_with_injected_types(index: TreeSitterJavaIndex) -> None:
+    service_fields = index.get_fields("com.example.order.OrderService")
+    controller_fields = index.get_fields("com.example.order.OrderController")
+
+    assert [(field.name, field.type_name) for field in service_fields] == [
+        ("orderMapper", "OrderMapper")
+    ]
+    assert [(field.name, field.type_name) for field in controller_fields] == [
+        ("orderService", "OrderService")
+    ]
+
+
+def test_abbreviated_logger_name_resolves_to_class_symbol(index: TreeSitterJavaIndex) -> None:
+    matches = index.find_symbol("c.e.order.OrderService")
+
+    assert any(
+        symbol.fqn == "com.example.order.OrderService"
+        and symbol.symbol_type == "class"
+        for symbol in matches
+    )
+
+
 def test_resolve_order_service_frame(index: TreeSitterJavaIndex) -> None:
     matches = index.resolve_frame(
         _frame(
@@ -230,3 +283,28 @@ def test_get_source_range_missing_file(index: TreeSitterJavaIndex) -> None:
 def test_get_source_range_before_index() -> None:
     with pytest.raises(JavaIndexError):
         TreeSitterJavaIndex().get_source_range(ORDER_SERVICE, 1, 2)
+
+
+def test_sql_array_and_provider_warnings(tmp_path: Path) -> None:
+    src = tmp_path / "src" / "com" / "example" / "sql"
+    src.mkdir(parents=True)
+    (src / "QueryMapper.java").write_text(
+        "package com.example.sql;\n"
+        "public interface QueryMapper {\n"
+        '    @Select({"SELECT * FROM orders", "SELECT 1"})\n'
+        "    String findOrders();\n"
+        '    @SelectProvider(type = Sql.class, method = "build")\n'
+        "    String findDynamic();\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    index = TreeSitterJavaIndex()
+
+    stats = index.index(tmp_path)
+
+    artifacts = index.find_sql("orders")
+    assert len(artifacts) == 1
+    assert artifacts[0].sql_text == "SELECT * FROM orders"
+    assert artifacts[0].tables == ["orders"]
+    assert any("SelectProvider" in warning for warning in stats.parse_warnings)
+    assert len(index.find_sql("findDynamic")) == 0

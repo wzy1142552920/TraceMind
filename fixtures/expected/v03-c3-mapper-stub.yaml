@@ -1,0 +1,32 @@
+case_id: v03-c3-mapper-stub
+symptom: "updateStatus returned rows=0; update failed"
+expected_top_cause_keywords:
+  - default
+  - stub
+  - "return 0"
+  - 默认方法
+  - 未执行
+expected_thread: http-nio-8080-exec-7
+expected_thread_context_messages:
+  - "paid callback orderId=10086"
+  - "updateStatus returned rows=0"
+  - "failed to update order status"
+forbidden_thread_context_markers:
+  - PaymentNotifier
+  - retry probe
+expected_evidence_refs:
+  - "db://orders/id=10086"
+  - "repo://src/main/java/com/example/order/OrderMapper.java"
+expected_evidence_kinds:
+  - log_thread_context
+  - source_code
+  - db_row
+expected_status: confirmed
+expected_hypothesis_status: confirmed
+expected_remediation_types:
+  - code
+  - test
+expected_remediation_target_keywords:
+  - OrderMapper
+forbidden_tool_calls: []
+notes: "Mapper default 方法体 return 0，SQL 未执行；修复应移除 default 方法体。"

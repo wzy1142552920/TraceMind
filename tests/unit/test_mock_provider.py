@@ -21,17 +21,28 @@ def test_scripted_responses() -> None:
     )
 
     assert first.finish_reason == "tool_calls"
-    assert [call.id for call in first.tool_calls] == ["call_1", "call_2"]
-    assert first.tool_calls[0].name == "code.find_symbol"
-    assert first.tool_calls[0].arguments == {"query": "OrderService.updateStatus"}
-    assert first.tool_calls[1].name == "logs.search"
+    assert [call.id for call in first.tool_calls] == [
+        "call_1",
+        "call_2",
+        "call_3",
+        "call_4",
+        "call_5",
+    ]
+    assert first.tool_calls[0].name == "diagnosis_propose_hypothesis"
+    assert first.tool_calls[2].name == "logs_get_thread_context"
+    assert first.tool_calls[4].name == "code_find_sql"
     assert first.usage is not None
     assert first.usage.input_tokens == 100
     assert first.usage.output_tokens == 30
 
     second = provider.complete([], [])
-    assert second.tool_calls == []
-    assert second.finish_reason == "stop"
+    assert [call.id for call in second.tool_calls] == ["call_6"]
+    assert second.finish_reason == "tool_calls"
+
+    third = provider.complete([], [])
+    assert [call.id for call in third.tool_calls] == ["call_7"]
+    assert third.tool_calls[0].name == "diagnosis_propose_remediation"
+    assert third.finish_reason == "tool_calls"
 
     exhausted = provider.complete([], [])
     assert exhausted.tool_calls == []

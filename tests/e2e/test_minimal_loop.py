@@ -71,21 +71,33 @@ def test_happy_path_cli_and_repeat_run(tmp_path: Path) -> None:
     } <= {path.name for path in run_dir.iterdir()}
 
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
-    assert report["schema_version"] == "0.2"
+    assert report["schema_version"] == "0.3"
     assert report["status"] == "confirmed"
     assert report["validation"]["citations_valid"] is True
     assert report["validation"]["evidence_ids_valid"] is True
-    assert report["root_causes"]
+    assert report["validation"]["hypotheses_valid"] is True
+    assert report["validation"]["remediation_grounded"] is True
+    assert report["validation"]["verification_labeled"] is True
+    assert "root_causes" not in report
+    assert report["hypotheses"]
+    assert report["hypotheses"][0]["status"] == "confirmed"
+    assert report["remediation_plan"]
+    assert report["remediation_plan"][0]["conditional"] is False
+    assert report["verification"]["environment"] == "none"
     assert report["sources"]
     assert report["stop"]["reason"] == "evidence_sufficient"
-    assert report["llm_usage"]["calls"] == 1
+    assert report["llm_usage"]["calls"] == 3
     assert report["llm_calls"][0]["ok"] is True
 
     run_text = (run_dir / "run.json").read_text(encoding="utf-8")
     run_data = json.loads(run_text)
-    assert run_data["schema_version"] == "0.2"
-    assert run_data["llm_usage"]["calls"] == 1
+    assert run_data["schema_version"] == "0.3"
+    assert run_data["llm_usage"]["calls"] == 3
     assert run_data["llm_calls"]
+    assert run_data["hypothesis_count"] == 2
+    assert run_data["assessment_count"] == 3
+    assert run_data["remediation_count"] == 1
+    assert run_data["verification"]["environment"] == "none"
     assert "DEEPSEEK_API_KEY" not in run_text
     assert "sk-" not in run_text
 
@@ -160,5 +172,9 @@ def test_json_summary(tmp_path: Path) -> None:
     summary = json.loads(result.output)
     assert summary["run_id"].startswith("run_")
     assert summary["status"] == "confirmed"
+    assert summary["hypothesis_count"] == 2
+    assert summary["top_hypothesis"]["hypothesis_id"] == "hyp_001"
+    assert summary["remediation_count"] == 1
+    assert summary["verification_environment"] == "none"
     assert Path(summary["report_path"]).exists()
     assert Path(summary["run_dir"]).exists()

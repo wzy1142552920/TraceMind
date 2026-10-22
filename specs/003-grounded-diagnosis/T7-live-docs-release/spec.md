@@ -1,7 +1,7 @@
 # T7 — Live 验证、文档与发布 Spec
 
 - **任务 ID**：T7
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T6
 - **下游**：无
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -74,10 +74,11 @@ TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live tests/live/test_live_v03
 新增 `tests/live/test_live_v03_cases.py`：
 
 - 参数化三 case（可先跑 C1/C2/C3 全部；若成本过高，至少 C1+C2+C3 各一次）。
-- 使用真实 `DeepSeekProvider`、Fake verification backend、较小预算：
-  - `max_iterations=8`、`max_tool_calls=12`、`max_llm_calls=10`（均低于默认预算）。
+- 使用真实 `DeepSeekProvider`、Fake verification backend、有界预算：
+  - `max_iterations=16`、`max_tool_calls=24`、`max_llm_calls=18`。
   - `max_hypotheses=4`。
-  - `llm_max_tokens` 控制成本。
+  - `llm_max_tokens=2000`。
+  - 最终预算在 live 调优后确定：早期 8/10/12 会在最终 remediation 前耗尽；提高后仍远低于 CLI 默认总成本。
 - 断言：
   1. report schema 0.3。
   2. 报告状态 ∈ {confirmed, probable}；结构合法。
@@ -102,10 +103,11 @@ uv run tracemind diagnose \
   --service order-service \
   --provider deepseek \
   --output-dir /tmp/tracemind-v03-live \
-  --max-iterations 8 --max-tool-calls 12 --llm-max-tokens 1200
+  --max-iterations 14 --max-tool-calls 24 --llm-max-tokens 2000
 ```
 
 - 退出码 0（confirmed/probable）或 3/4，按实际结果记录。
+- CLI 不暴露 `--max-llm-calls`；运行时以 `max_iterations + 2` 预留最终 remediation 调用。
 - 生成 5 类产物；schema 0.3；fixture 标注；无 secret。
 
 ### 5.4 文档
@@ -206,7 +208,26 @@ uv run tracemind --version
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| — | 待实现后回填 | PLANNED |
+| 2026-10-22 | `uv run pytest -q` | PASS：385 passed, 6 skipped（live 默认跳过） |
+| 2026-10-22 | `uv run ruff check .` | PASS |
+| 2026-10-22 | `uv run mypy src` | PASS（48 source files） |
+| 2026-10-22 | live gate 三 case | PASS：4 passed in 65.38s（三 case + secret scan） |
+| 2026-10-22 | live C1/C2/C3 | 3/3 confirmed；Top-1 3/3；Top-3 3/3；同线程上下文 3/3；代码证据 3/3 |
+| 2026-10-22 | live CLI 冒烟（C1，14/24/2000） | 退出码 0；5 类产物；schema 0.3；3 条 remediation；全部 validation flag=true；无 secret |
+| 2026-10-22 | `uv run tracemind --version` | `tracemind 0.3.0` |
+| 2026-10-22 | 链接/旧文档/秘密扫描 | PASS：003 链接有效；001/002/docs 设计文档未修改；产物无 `DEEPSEEK_API_KEY`/`sk-` |
+
+### live 实际结果
+
+模型：`deepseek-flash`。以下为一次通过完整 gate 的记录；live 具有非确定性，不宣称重复稳定或生产准确率。
+
+| Case | 状态 | Top-1 | Top-3 | LLM calls | Tool calls | Total tokens | Latency |
+|---|---|---|---|---|---|---|---|
+| `v03-c1-missing-row` | confirmed | hit | hit | 11 | 15 | 74,918 | 23,826 ms |
+| `v03-c2-duplicate-callback` | confirmed | hit | hit | 7 | 11 | 41,548 | 17,614 ms |
+| `v03-c3-mapper-stub` | confirmed | hit | hit | 11 | 17 | 71,296 | 23,828 ms |
+
+CLI 冒烟（C1）：7 次 LLM 调用；输入 38,054 / 输出 3,531 / 总计 41,585 tokens；延迟 17,308 ms；11 次工具调用；3 条 remediation。产物：`run.json`、`events.jsonl`、`audit.jsonl`、`report.md`、`report.json`。
 
 ## 11. 变更记录
 
@@ -214,3 +235,5 @@ uv run tracemind --version
 |---|---|
 | 2026-10-22 | 创建 T7 spec：live 三 case、CLI 冒烟、文档、验收回填与 0.3.0 发布 |
 | 2026-10-22 | live/文档增加同线程上下文与代码证据断言；新增 AC-T7-13 |
+| 2026-10-22 | T7 implemented：live 三 case 全通过；CLI 冒烟成功；README/ACCEPTANCE/T1–T7 回填；版本 0.3.0 |
+| 2026-10-22 | live 调优记录：运行预算改为 16/18/24/2000；补强通用证据复用、评估修订、prompt 正文与 remediation allowed evidence，无 case 特判 |

@@ -10,27 +10,144 @@
 
 {{ report.summary }}
 
-## 根因候选
+## 鉴别诊断
 
-{% if report.root_causes %}
-{% for root in report.root_causes %}
-### {{ root.hypothesis_id }}：{{ root.statement }}
+> `ranking_score` 是排序分，不是概率。
 
-- 状态：{{ root.status }}
-- 证据 ID：{{ root.evidence_ids | join(', ') if root.evidence_ids else '（无）' }}
-- 来源：{{ root.source_refs | join(', ') if root.source_refs else '（无）' }}
-- 缺失证据：{{ root.missing_evidence | join(', ') if root.missing_evidence else '（无）' }}
+{% if report.hypotheses %}
+{% for hypothesis in report.hypotheses %}
+### {{ hypothesis.hypothesis_id }}：{{ hypothesis.statement }}
+
+- 状态：{{ hypothesis.status }}
+- 排序分：{{ hypothesis.ranking_score }}
+- 因果链：
+{% if hypothesis.cause_chain %}
+{% for step in hypothesis.cause_chain %}
+  {{ loop.index }}. {{ step }}
+{% endfor %}
+{% else %}
+  - （无）
+{% endif %}
+- 基础证据：{{ hypothesis.basis_evidence_ids | join(', ') if hypothesis.basis_evidence_ids else '（无）' }}
+- 支持证据：{{ hypothesis.supporting_evidence_ids | join(', ') if hypothesis.supporting_evidence_ids else '（无）' }}
+- 反证证据：{{ hypothesis.refuting_evidence_ids | join(', ') if hypothesis.refuting_evidence_ids else '（无）' }}
+- 缺失要求：{{ hypothesis.missing_requirement_ids | join(', ') if hypothesis.missing_requirement_ids else '（无）' }}
+- 证伪条件：
+{% if hypothesis.falsifiers %}
+{% for falsifier in hypothesis.falsifiers %}
+  - {{ falsifier }}
+{% endfor %}
+{% else %}
+  - （无）
+{% endif %}
+
+| Requirement | 区分性 | 证据类型 | 覆盖 | 支持证据 | 反证证据 |
+|---|---|---|---|---|---|
+{% for requirement in hypothesis.requirements %}
+| {{ requirement.requirement_id }}：{{ requirement.description }} | {{ 'yes' if requirement.discriminating else 'no' }} | {{ requirement.evidence_kinds | join(', ') }} | {{ 'satisfied' if requirement.satisfied else 'missing' }} | {{ requirement.supporting_evidence_ids | join(', ') if requirement.supporting_evidence_ids else '-' }} | {{ requirement.refuting_evidence_ids | join(', ') if requirement.refuting_evidence_ids else '-' }} |
+{% endfor %}
 
 {% endfor %}
 {% else %}
-无支持的根因候选。
+无假设。
+{% endif %}
+
+## 验证过程
+
+- environment: `{{ report.verification.environment }}`
+- backend: `{{ report.verification.backend if report.verification.backend else 'null' }}`
+- tables_queried: {{ report.verification.tables_queried | join(', ') if report.verification.tables_queried else '（无）' }}
+- note: {{ report.verification.note }}
+
+## 修复方案
+
+{% if report.remediation_plan %}
+{% for hypothesis in report.hypotheses %}
+{% set actions = report.remediation_plan | selectattr('hypothesis_id', 'equalto', hypothesis.hypothesis_id) | list %}
+{% if actions %}
+### {{ hypothesis.hypothesis_id }}（{{ hypothesis.status }}）
+
+{% for action in actions %}
+#### {{ action.action_id }}：{{ action.title }}
+
+- 类型：{{ action.type }}
+- 目标：`{{ action.target }}`{% if action.type in ['config', 'ops', 'test'] %}（目标未自动验证）{% endif %}
+
+- 条件性建议：{{ 'yes（假设未确认）' if action.conditional else 'no' }}
+- 描述：{{ action.description }}
+- 依据证据：{{ action.evidence_ids | join(', ') }}
+- 风险：{{ action.risk }}
+- 前置条件：{{ action.prerequisites | join('；') if action.prerequisites else '（无）' }}
+- 验证步骤：{{ action.verification_steps | join('；') if action.verification_steps else '（无）' }}
+
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% else %}
+无经过校验的修复建议。
 {% endif %}
 
 ## 证据来源
 
-{% if report.sources %}
-{% for source in report.sources %}
-- [{{ source.kind }}] [{{ 'verified' if source.verified else 'unverified' }}] `{{ source.source_ref }}`
+{% set thread_sources = report.sources | selectattr('kind', 'equalto', 'log_thread_context') | list %}
+{% set log_sources = report.sources | selectattr('kind', 'equalto', 'log_event') | list %}
+{% set code_sources = report.sources | selectattr('kind', 'in', ['stack_frame', 'source_code', 'call_path', 'annotation', 'config']) | list %}
+{% set sql_sources = report.sources | selectattr('kind', 'equalto', 'sql') | list %}
+{% set db_sources = report.sources | selectattr('kind', 'in', ['db_row', 'db_schema']) | list %}
+
+### 同线程日志上下文
+
+{% if thread_sources %}
+{% for source in thread_sources %}
+- [{{ 'verified' if source.verified else 'unverified' }}] `{{ source.evidence_id }}` thread={{ source.thread or '?' }} L{{ source.line_start }}-L{{ source.line_end }}
+  - 引用：`{{ source.source_ref }}`
+  - 摘要：{{ source.claim }}
+{% if source.messages %}
+  - 消息：
+{% for message in source.messages %}
+    - {{ message }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% else %}
+- （无）
+{% endif %}
+
+### 日志事件
+
+{% if log_sources %}
+{% for source in log_sources %}
+- [{{ 'verified' if source.verified else 'unverified' }}] `{{ source.evidence_id }}` `{{ source.source_ref }}`：{{ source.claim }}
+{% endfor %}
+{% else %}
+- （无）
+{% endif %}
+
+### 代码与调用链
+
+{% if code_sources %}
+{% for source in code_sources %}
+- [{{ 'verified' if source.verified else 'unverified' }}] [{{ source.kind }}] `{{ source.evidence_id }}` `{{ source.source_ref }}`：{{ source.claim }}
+{% endfor %}
+{% else %}
+- （无）
+{% endif %}
+
+### SQL
+
+{% if sql_sources %}
+{% for source in sql_sources %}
+- [{{ 'verified' if source.verified else 'unverified' }}] `{{ source.evidence_id }}` `{{ source.source_ref }}`：{{ source.claim }}
+{% endfor %}
+{% else %}
+- （无）
+{% endif %}
+
+### 只读数据
+
+{% if db_sources %}
+{% for source in db_sources %}
+- [{{ 'verified' if source.verified else 'unverified' }}] [{{ source.kind }}] `{{ source.evidence_id }}` `{{ source.source_ref }}`：{{ source.claim }}
 {% endfor %}
 {% else %}
 - （无）
@@ -78,6 +195,9 @@
 
 - citations_valid: {{ report.validation.citations_valid }}
 - evidence_ids_valid: {{ report.validation.evidence_ids_valid }}
+- hypotheses_valid: {{ report.validation.hypotheses_valid }}
+- remediation_grounded: {{ report.validation.remediation_grounded }}
+- verification_labeled: {{ report.validation.verification_labeled }}
 - status_consistent: {{ report.validation.status_consistent }}
 {% if report.validation.errors %}
 - errors:

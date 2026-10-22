@@ -1,7 +1,7 @@
 # T2 — 代码流索引与工具 Spec
 
 - **任务 ID**：T2
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T4、T5、T6、T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -342,7 +342,10 @@ uv run mypy src
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| — | 待实现后回填 | PLANNED |
+| 2026-10-22 | `uv run pytest tests/unit/test_java_index.py tests/unit/test_code_flow.py tests/unit/test_code_flow_tools.py tests/unit/test_tool_binding.py -q` | 48 passed |
+| 2026-10-22 | `uv run pytest -q` | 221 passed, 2 skipped（live opt-in） |
+| 2026-10-22 | `uv run ruff check .` | All checks passed |
+| 2026-10-22 | `uv run mypy src` | Success, 41 source files |
 
 ## 11. 变更记录
 

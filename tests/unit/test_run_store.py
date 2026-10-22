@@ -37,9 +37,9 @@ def _result(run_id: str = "run_test") -> RunResult:
             source_ref=(
                 "repo://src/main/java/com/example/order/OrderService.java#L17-L27"
             ),
-            supports=["hyp_001"],
             strength="strong",
-            created_at=CREATED_AT,
+            provenance="ast_index",
+            observed_at=CREATED_AT,
         )
     ]
     return RunResult(
@@ -54,7 +54,7 @@ def _result(run_id: str = "run_test") -> RunResult:
                 statement="Exception originates in OrderService",
                 status="confirmed",
                 evidence_ids=["ev_0001"],
-                missing_evidence=[],
+                missing_requirement_ids=[],
             )
         ],
         evidence=evidence,

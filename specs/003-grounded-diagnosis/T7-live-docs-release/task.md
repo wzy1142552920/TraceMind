@@ -2,7 +2,7 @@
 
 - **关联 Spec**：[spec.md](./spec.md)
 - **任务 ID**：T7
-- **状态**：planned
+- **状态**：implemented（2026-10-22）
 - **依赖**：T6
 - **下游**：无
 
@@ -22,7 +22,7 @@
    - 默认 skip；测试先失败/跳过。
 
 3. **跑 live 并调优（只做通用修复）**
-   - 使用小预算跑三 case。
+   - 使用有界预算（16 iterations / 18 LLM / 24 tools / 2000 output tokens）跑三 case。
    - 若失败，定位是协议/格式/上下文问题，修 prompt/repair/工具描述。
    - 不按 case 写死路径、关键词、答案。
    - 记录实际 model/usage/latency/stop reason、Top-1、同线程上下文和代码证据结果。
@@ -52,24 +52,24 @@
 
 ## 2. 交付物
 
-- [ ] `tests/live/test_live_v03_cases.py`
-- [ ] live CLI 冒烟记录
-- [ ] 根 README v0.3 更新
-- [ ] 003 README/ACCEPTANCE 回填
-- [ ] T1–T7 spec/task 验证结果回填
-- [ ] `pyproject.toml` / `__init__.py` 0.3.0
-- [ ] `uv.lock` 同步（如需）
-- [ ] 链接/secret/旧文档检查结果
+- [x] `tests/live/test_live_v03_cases.py`
+- [x] live CLI 冒烟记录
+- [x] 根 README v0.3 更新
+- [x] 003 README/ACCEPTANCE 回填
+- [x] T1–T7 spec/task 验证结果回填
+- [x] `pyproject.toml` / `__init__.py` 0.3.0
+- [x] `uv.lock` 同步
+- [x] 链接/secret/旧文档检查结果
 
 ## 3. Definition of Done
 
-- [ ] AC-T7-01 至 AC-T7-13 全部满足或如实标记 BLOCKED/FAIL。
-- [ ] 默认 pytest 离线、无网络；live 需显式 gate。
-- [ ] live 三 case 报告结构、同线程上下文、代码证据、fixture 标注、无 secret 通过；Top-1/Top-3 如实记录。
-- [ ] live CLI 冒烟产物完整、schema 0.3、无 secret。
-- [ ] README/ACCEPTANCE/T1–T7 文档一致，链接有效。
-- [ ] 版本 0.3.0 一致。
-- [ ] 未修改 001/002 specs/docs 设计文档；未提交 Key/`.env`/运行产物。
+- [x] AC-T7-01 至 AC-T7-13 全部满足；无 BLOCKED/FAIL。
+- [x] 默认 pytest 离线、无网络；live 需显式 gate。
+- [x] live 三 case 报告结构、同线程上下文、代码证据、fixture 标注、无 secret 通过；Top-1 3/3、Top-3 3/3。
+- [x] live CLI 冒烟产物完整、schema 0.3、无 secret。
+- [x] README/ACCEPTANCE/T1–T7 文档一致，链接有效。
+- [x] 版本 0.3.0 一致。
+- [x] 未修改 001/002 specs/docs 设计文档；未提交 Key/`.env`/运行产物。
 
 ## 4. 验证命令
 
@@ -96,4 +96,22 @@ git status --short
 
 | 日期 | 执行人 | 命令/检查 | 结果 | 备注 |
 |---|---|---|---|---|
-| — | — | 待实现 | PLANNED | — |
+| 2026-10-22 | Claude | `uv run pytest -q` | PASS | 385 passed, 6 skipped |
+| 2026-10-22 | Claude | `uv run ruff check .` | PASS | All checks passed |
+| 2026-10-22 | Claude | `uv run mypy src` | PASS | 48 source files |
+| 2026-10-22 | Claude | `TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live tests/live/test_live_v03_cases.py -q -s` | PASS | 4 passed in 65.38s；三 case confirmed，Top-1 3/3、Top-3 3/3 |
+| 2026-10-22 | Claude | live CLI 冒烟 | PASS | exit 0；5 类产物；41585 tokens；17308 ms；3 actions；无 secret |
+| 2026-10-22 | Claude | `uv run tracemind --version` | PASS | `tracemind 0.3.0` |
+| 2026-10-22 | Claude | 链接/secret/旧文档检查 | PASS | 旧 docs/001/002 未修改；产物无 Key/`sk-` |
+
+### 6.1 live 三 case 记录
+
+模型 `deepseek-flash`；Fake verification backend；预算 16/18/24/2000。
+
+| Case | 状态 | Top-1 | Top-3 | LLM calls | Tools | Total tokens | Latency |
+|---|---|---|---|---|---|---|---|
+| `v03-c1-missing-row` | confirmed | hit | hit | 11 | 15 | 74,918 | 23.8s |
+| `v03-c2-duplicate-callback` | confirmed | hit | hit | 7 | 11 | 41,548 | 17.6s |
+| `v03-c3-mapper-stub` | confirmed | hit | hit | 11 | 17 | 71,296 | 23.8s |
+
+live 非确定性；上表是 2026-10-22 通过完整 gate 的一次记录，不代表生产准确率。调优只修复通用协议/上下文/接地问题，未按 case 写死路径或答案。

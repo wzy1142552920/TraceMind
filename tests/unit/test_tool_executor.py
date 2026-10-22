@@ -87,6 +87,138 @@ def test_logs_get_event_context(executor: ToolExecutor) -> None:
     assert result.truncated is False
 
 
+def test_logs_get_thread_context_defaults_to_primary(
+    executor: ToolExecutor,
+) -> None:
+    result = executor.execute(
+        _request("logs.get_thread_context", {"before": 3, "after": 3})
+    )
+
+    assert result.ok
+    assert result.data["anchor_event_id"] == "evt_0003"
+    assert result.data["thread"] == "http-nio-8080-exec-7"
+    assert result.data["count"] == 3
+    assert result.data["truncated"] is False
+    assert result.source_ref == (
+        "log://incident.log#thread=http-nio-8080-exec-7&L1-L3"
+    )
+    assert [item["event_id"] for item in result.data["items"]] == [
+        "evt_0001",
+        "evt_0002",
+        "evt_0003",
+    ]
+    assert all(
+        item["logger_class"]
+        for item in result.data["items"]
+    )
+    assert all(
+        "stack_frames" not in item
+        for item in result.data["items"]
+    )
+
+
+def test_logs_get_thread_context_respects_radius(
+    executor: ToolExecutor,
+) -> None:
+    result = executor.execute(
+        _request(
+            "logs.get_thread_context",
+            {"event_id": "evt_0003", "before": 1, "after": 0},
+        )
+    )
+
+    assert result.ok
+    assert [item["event_id"] for item in result.data["items"]] == [
+        "evt_0002",
+        "evt_0003",
+    ]
+    assert result.data["line_start"] == 2
+    assert result.data["line_end"] == 3
+    assert result.data["truncated"] is True
+
+
+def test_logs_get_thread_context_excludes_other_threads(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "threads.log"
+    log_path.write_text(
+        "2026-10-18 10:21:03.412 INFO  [http-a] c.e.X - start\n"
+        "2026-10-18 10:21:03.413 INFO  [http-b] c.e.Y - other\n"
+        "2026-10-18 10:21:03.416 ERROR [http-a] c.e.X - boom\n"
+        "java.lang.IllegalStateException: boom\n"
+        "    at com.example.order.OrderService.updateStatus(OrderService.java:24)\n",
+        encoding="utf-8",
+    )
+    parsed = LogParser().parse(log_path)
+    java_index = TreeSitterJavaIndex()
+    java_index.index(REPO_FIXTURE)
+    context = ToolContext(
+        parsed_log=parsed,
+        java_index=java_index,
+        repo_root=REPO_FIXTURE,
+        log_root=tmp_path,
+    )
+    executor = ToolExecutor(build_default_registry(), context)
+
+    result = executor.execute(
+        _request("logs.get_thread_context", {"event_id": "evt_0003"})
+    )
+
+    assert result.ok
+    threads = {item["thread"] for item in result.data["items"]}
+    assert threads == {"http-a"}
+    assert [item["event_id"] for item in result.data["items"]] == [
+        "evt_0001",
+        "evt_0003",
+    ]
+
+
+def test_logs_get_thread_context_rejects_missing_thread(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "no-thread.log"
+    log_path.write_text(
+        "2026-10-18 10:21:03.416 ERROR c.e.X - boom\n"
+        "java.lang.IllegalStateException: boom\n",
+        encoding="utf-8",
+    )
+    parsed = LogParser().parse(log_path)
+    executor = ToolExecutor(
+        build_default_registry(),
+        ToolContext(parsed_log=parsed, log_root=tmp_path),
+    )
+
+    result = executor.execute(
+        _request("logs.get_thread_context", {"event_id": "evt_0001"})
+    )
+
+    assert not result.ok
+    assert result.error_code == "INVALID_ARGUMENTS"
+    assert "thread" in (result.error_message or "").lower()
+
+
+def test_logs_get_thread_context_rejects_unknown_event(
+    executor: ToolExecutor,
+) -> None:
+    result = executor.execute(
+        _request("logs.get_thread_context", {"event_id": "evt_9999"})
+    )
+
+    assert not result.ok
+    assert result.error_code == "TARGET_DENIED"
+
+
+def test_logs_get_thread_context_rejects_large_radius(
+    executor: ToolExecutor,
+) -> None:
+    result = executor.execute(
+        _request("logs.get_thread_context", {"before": 21})
+    )
+
+    assert not result.ok
+    assert result.error_code == "INVALID_ARGUMENTS"
+
+
 def test_code_find_symbol(executor: ToolExecutor) -> None:
     result = executor.execute(
         _request("code.find_symbol", {"query": "OrderService.updateStatus"})

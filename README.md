@@ -1,38 +1,53 @@
 # TraceMind
 
-**本地优先、证据驱动的 Java 故障定位 Agent（v0.2 真实 DeepSeek 最小循环）。**
+**本地优先、证据驱动的 Java 故障诊断 Agent（v0.3 自主鉴别诊断）。**
 
-TraceMind 读取一份 Java 应用日志和本地源码，解析异常堆栈、索引类/方法，由一个受控 Agent 运行时规划只读工具调用，收集证据，定位到源码行号，并输出带引用校验的 Markdown/JSON 诊断报告。
+TraceMind 读取一份用户提供的 Java 应用日志和本地源码，解析异常与同线程上下文，由一个受控 Agent 运行时提出多个候选原因、按需调用代码流和只读数据验证工具，最后由确定性 Evaluator 判定结论，并输出带证据引用的结构化修复建议。
 
-LLM 只负责规划、假设和解释；预算、工具权限、停止条件、证据状态和引用校验由确定性代码负责。
+LLM 负责提出假设、规划调查、解释真实证据和生成修复建议；预算、工具权限、证据状态、确认门槛和引用校验由确定性代码负责。
 
-> 项目定位：面向 **AI Agent（主）+ Java** 方向的工程作品。用 Python 构建 Agent，用 Java/Spring 真实源码和故障模式作为诊断领域。
+> 项目定位：面向 **AI Agent（主）+ Java** 方向的工程作品。用 Python 构建 Agent，用 Java/Spring 真实源码、日志和故障模式作为诊断领域。
 
-## 最小诊断循环
+## 诊断流程
 
 ```text
-日志输入
-  -> 解析文本日志 + Java 堆栈
-  -> tree-sitter Java 源码索引
-  -> 从最上层 in-project stack frame 生成种子假设
-  -> Mock/DeepSeek Provider 规划工具调用
-  -> ToolExecutor 执行只读工具
-  -> Evidence Store 记录证据
-  -> Evaluator 按证据覆盖确认/拒绝
-  -> Markdown/JSON 报告 + run 产物
+用户提供的日志文件
+  -> 解析异常/堆栈，选择 primary anomaly
+  -> 提取相同线程号的上下文，重建业务步骤
+  -> LLM 基于日志/代码证据提出至少两个候选原因
+  -> 绑定 hypothesis + requirement 调用只读工具
+       -> 代码流：符号、调用边、注解 SQL、源码范围
+       -> 数据验证：db.describe_table / db.get_row（Fake backend）
+  -> LLM 逐条评估真实证据，确定性 Evaluator 更新状态
+  -> confirmed 需要一个假设满足全部 requirements，且所有替代被反驳
+  -> LLM 生成结构化 remediation plan
+  -> 引用/证据/接地/fixture 标注校验 -> 报告 schema 0.3
 ```
 
-v0.1 完成可离线复现的最小循环；v0.2 让同一循环真实调用 DeepSeek，并补齐配置、重试、使用量记录和有界计划修复。
+v0.1 完成可离线复现的最小循环；v0.2 接入真实 DeepSeek 并补齐配置、重试、usage/latency 和有界计划修复；v0.3 升级为**多假设鉴别诊断 + 代码/日志互证 + 只读数据验证 + 结构化修复**。
 
-## v0.2 新增
+## v0.3 新增
 
-- **项目根 `.env`**：`DEEPSEEK_API_KEY` 可放在 `.env`，无需每次 `export`；`.env` 已被忽略，只提交占位符 `.env.example`。
-- **配置优先级**：CLI 参数 > 真实环境变量 > `.env` > 默认值；Key 缺失时在解析日志/索引仓库/创建产物前退出 `2`。
-- **DeepSeek 默认值**：`deepseek-flash`，Planner 默认关闭 thinking；模型可用 `--model` / `TRACEMIND_LLM_MODEL` 覆盖。
-- **受控重试**：只重试 429、5xx、timeout、connection、空响应；最多 2 次，固定 0.5s/1.0s 退避；auth/参数错误不重试。
-- **有界计划修复**：把上一轮工具结果/错误/新证据反馈给模型；text-only、未知工具、非法参数、无新证据、`finish_reason=length` 可在最多 2 轮内修复，仍受迭代/工具/LLM 预算约束。
-- **Usage / latency / provenance**：每次 LLM 调用记录 provider/model/request ID/attempts/tokens/latency/finish reason；报告 schema 升到 `0.2`。
-- **Opt-in live 验证**：默认测试完全离线；显式打开 gate 后跑真实 DeepSeek adapter + CLI 测试，并扫描产物中的 secret。
+- **鉴别诊断**：至少两个 grounded hypotheses；LLM 不能直接确认，状态由 Evaluator 根据 requirements、supports/refutes、替代假设和证据来源判定。
+- **同线程日志上下文**：异常分析不只看堆栈；从用户日志中提取相同线程号的有序事件，并与代码流程互相印证。
+- **代码流工具**：`code.get_symbol/get_callers/get_callees/find_source_range/find_sql`；支持 Mapper 注解 SQL、default 方法体、重载候选。
+- **只读数据验证契约**：`--verification-data` 加载 Fixture，经 `FakeVerificationBackend` 提供 `db.describe_table/get_row`；只读、主键单行、表/列白名单、敏感列脱敏。
+- **结构化修复方案**：只针对 supported/confirmed 假设；每条 action 绑定证据、目标、风险和验证步骤；不生成补丁、不执行修改。
+- **证据多绑定**：一个真实工具事实可同时满足多个 hypothesis/requirement；历史事实可复用，不重复调用工具。
+- **可修订评估**：后续事实可重新评估同一证据并覆盖此前 neutral/supports/refutes 判断。
+- **报告 schema 0.3**：`hypotheses` + `remediation_plan` + `verification` + `sources` + `validation`。
+
+## 三个诊断 case
+
+三个 case 使用**相同日志症状**（`updateStatus returned rows=0`），但真实原因不同：
+
+| Case | 仓库 | Fixture DB | 真实原因 |
+|---|---|---|---|
+| `v03-c1-missing-row` | `minimal-order-service-fixed` | `orders id=10086` 不存在 | 目标订单行缺失，UPDATE 匹配 0 行 |
+| `v03-c2-duplicate-callback` | `minimal-order-service-fixed` | `orders id=10086` 状态为 `PAID` | 重复 PAID 回调被 `status <> #{status}` SQL guard 变成 0 行 |
+| `v03-c3-mapper-stub` | `minimal-order-service` | `orders id=10086` 状态为 `PENDING` | Mapper `default` 方法体 `return 0;`，注解 SQL 未执行 |
+
+三个 case 的日志内容完全相同；仓库差异只在 Mapper / 服务实现，期望答案只存在于测试数据，不进入 runtime prompt 或运行时规则。
 
 ## 快速开始
 
@@ -44,6 +59,7 @@ v0.1 完成可离线复现的最小循环；v0.2 让同一循环真实调用 Dee
 ```bash
 uv sync
 uv run tracemind --help
+uv run tracemind --version   # tracemind 0.3.0
 ```
 
 ## 配置（仅 live DeepSeek 需要）
@@ -70,7 +86,7 @@ CLI 参数 > 真实环境变量 > 项目根 .env > 默认值
 
 不提供 `--api-key`；Key 只从环境变量或 `.env` 读取，且不会写入 run 产物、事件、报告、审计或普通日志。
 
-## Demo（离线 Mock）
+## 离线 Demo（Mock）
 
 ```bash
 uv run tracemind diagnose \
@@ -82,69 +98,62 @@ uv run tracemind diagnose \
 
 默认使用 `fixtures/mock/basic_plan.json`，不访问网络、不需要 API Key。
 
-预期结果：
-
-- 退出码 `0`
-- 报告状态 `confirmed`
-- 终端显示状态、根因候选、证据数、工具调用数、LLM 使用量和报告路径
-- 运行产物写入 `.tracemind/runs/<run_id>/`
-
-只输出 JSON 摘要：
+带 Fixture 数据库验证的 v0.3 case：
 
 ```bash
 uv run tracemind diagnose \
-  --log fixtures/logs/basic/incident.log \
-  --repo fixtures/repos/minimal-order-service \
+  --log fixtures/logs/v03-c1-missing-row/incident.log \
+  --repo fixtures/repos/minimal-order-service-fixed \
+  --verification-data fixtures/verification/v03-c1-missing-row.json \
   --service order-service \
-  --provider mock \
-  --json
+  --provider mock
 ```
+
+运行产物默认写入 `.tracemind/runs/<run_id>/`。`--json` 输出机器可读摘要。
 
 ## 真实 DeepSeek
 
 ```bash
 uv run tracemind diagnose \
-  --log fixtures/logs/basic/incident.log \
-  --repo fixtures/repos/minimal-order-service \
+  --log fixtures/logs/v03-c1-missing-row/incident.log \
+  --repo fixtures/repos/minimal-order-service-fixed \
+  --verification-data fixtures/verification/v03-c1-missing-row.json \
   --service order-service \
   --provider deepseek \
-  --output-dir /tmp/tracemind-live \
-  --max-iterations 4 --max-tool-calls 6 --llm-max-tokens 800
+  --output-dir /tmp/tracemind-v03-live \
+  --max-iterations 14 --max-tool-calls 24 --llm-max-tokens 2000
 ```
 
-建议用较小的迭代/工具/token 预算控制成本。真实输出具有非确定性，合法工具路径可能不同；成功标准是结构、证据和引用校验，而不是唯一措辞。
+说明：
 
-没有配置 Key 时：
-
-```text
-DEEPSEEK_API_KEY is not set. Put it in .env or export it, or use --provider mock.
-```
-
-命令在日志解析、仓库索引和创建输出目录之前退出 `2`。
+- `--max-llm-calls` 不在 CLI 暴露，运行时使用 `max_iterations + 2`，为最终 remediation 留出调用。
+- 真实输出具有非确定性，合法工具路径可能不同；成功标准是结构、证据和引用校验，而不是唯一措辞。
+- 没有配置 Key 时，命令在日志解析、仓库索引和创建输出目录之前退出 `2`。
 
 ### Live 测试（opt-in）
 
 live 测试需要 `--run-live`、`TRACEMIND_LIVE_TESTS=1` 和非空 Key（环境变量或 `.env`）三者同时满足：
 
 ```bash
-TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q
+TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live tests/live/test_live_v03_cases.py -q -s
 ```
 
-默认 `uv run pytest` 会跳过 live 测试，不访问网络、不产生费用。未满足 gate 时 live 验收只能标记 `BLOCKED`，不能写成通过。
+默认 `uv run pytest` 跳过 live 测试，不访问网络、不产生费用。未满足 gate 时 live 验收只能标记 `BLOCKED`，不能写成通过。
 
 ## CLI
 
 | 参数 | 说明 |
 |---|---|
-| `--log PATH` | 输入日志文件（必填） |
+| `--log PATH` | 用户提供的日志文件（必填） |
 | `--repo PATH` | 本地 Java 仓库根目录（必填） |
+| `--verification-data PATH` | v0.3 Fixture 验证数据；缺省时不注册 DB 工具 |
 | `--service NAME` | 服务名（必填） |
 | `--provider mock\|deepseek` | Provider，默认 `mock` |
-| `--mock-script PATH` | Mock 响应脚本，默认 `fixtures/mock/basic_plan.json` |
+| `--mock-script PATH` | Mock 响应脚本 |
 | `--output-dir PATH` | 运行产物目录，默认 `.tracemind/runs` |
-| `--max-iterations N` | 最大规划轮数，默认 `6` |
-| `--max-tool-calls N` | 最大工具调用数，默认 `8` |
-| `--model NAME` | 模型覆盖，默认 `deepseek-flash` |
+| `--max-iterations N` | 最大规划轮数，默认 `10` |
+| `--max-tool-calls N` | 最大工具调用数，默认 `16` |
+| `--model NAME` | 模型覆盖 |
 | `--base-url URL` | OpenAI 兼容 Base URL 覆盖 |
 | `--llm-timeout SECONDS` | 单次 LLM 请求超时 |
 | `--llm-max-retries N` | 传输重试次数（0–2） |
@@ -169,39 +178,97 @@ TRACEMIND_LIVE_TESTS=1 uv run pytest --run-live -m live -q
 
 ```text
 .tracemind/runs/<run_id>/
-  run.json        # schema 0.2：provider/model/state/stop/budget/log/repo/index + LLM 配置/usage/逐次调用
-  events.jsonl    # 状态转换、LLM、工具、证据、修复、停止事件
+  run.json        # schema 0.3：provider/model/state/stop/budget/log/repo/index + LLM 配置/usage/逐次调用
+  events.jsonl    # 状态转换、LLM、工具、证据、评估、修复、停止事件
   audit.jsonl     # 工具调用、参数 hash、结果、耗时
   report.md       # Jinja2 模板渲染的人类可读报告
-  report.json     # report schema 0.2（含 llm_usage / llm_calls）
+  report.json     # report schema 0.3
 ```
 
-报告中的源码/日志引用会被校验：
+报告引用会被校验：
 
 - `repo://<relative_path>#Lx-Ly`
-- `log://<event_id>` 或 `log://<log_file>#Lx-Ly`
+- `log://<event_id>` 或 `log://<log_file>#thread=<thread>&Lx-Ly`
+- `db://<table>/<key>=<value>`
 
-校验失败会降级为 `insufficient_data`，不会伪造“confirmed”。
+校验失败会降级诊断状态或丢弃未接地修复建议，不会伪造 `confirmed`。
 
-## 可靠性与可观测性
+## 结论如何被确认
 
-- **证据门槛不变**：`stack_frame + log_event + source_code` 三类证据齐全后，只有 Evaluator 能把假设标记为 `confirmed`；模型文本不能直接确认。
-- **传输重试**：OpenAI SDK 隐式重试关闭（`max_retries=0`），由 TraceMind 记录 `attempts` 并做有界退避；401/403、400/404/422 和非法工具参数不重试。
-- **计划修复**：修复轮会收到上一轮观察（文本、工具结果、错误码、新证据数、缺失证据、剩余预算）；修复次数和总预算同时受限，耗尽后以 `no_progress`/`insufficient_data` 停止。
-- **使用量**：`run.json`、`report.json` 和终端摘要包含 calls/failed/retries、input/output/total tokens 和累计 latency；provider 未返回的 token 字段保持 `null`，不虚构。
+必须同时满足：
+
+1. 至少两个 grounded hypotheses，且只有一个 qualifies。
+2. 每个 requirement 由已绑定该 hypothesis/requirement 的真实证据支持。
+3. 至少一个 discriminating requirement 被满足，且没有 refuting 证据。
+4. 支持证据中至少一项来自工具结果。
+5. 覆盖日志、代码、工具结果三类来源。
+6. 主事件有线程号时，必须有一条已评估的同线程上下文。
+7. 所有替代假设均为 `contradicted`。
+
+LLM 只能提交 assessment（supports/refutes/neutral），不能设置 status、创建证据或修改 evidence ledger。重新评估同一证据会修订此前判断，而不是产生重复评估。
+
+## 可靠性与安全边界
+
+- **只读**：没有 shell、写数据库、文件写入或自动修复工具；remediation 只展示，不生成 diff/补丁。
+- **有界**：迭代、LLM、工具、假设、requirement、assessment、remediation 数量均有上限；输出截断。
+- **Fake 验证标注**：`verification.environment=fixture`、`backend=fake`，note 明确说明不是生产 DB 验证；报告和证据不会冒充生产结果。
 - **Secret 安全**：live 测试扫描 run 产物，确认不包含 Key 或 `sk-` 前缀。
+- **日志即不可信输入**：日志/代码/SQL/DB 内容只作为数据，不作为指令。
+
+## 评估与验收
+
+当前 checkout 的验证结果（2026-10-22）：
+
+| 检查 | 结果 |
+|---|---|
+| 默认离线测试 | **385 passed, 6 skipped**（live 测试跳过，不访问网络） |
+| `ruff check .` | 通过 |
+| `mypy src` | 通过（48 个源文件） |
+| v0.3 离线三 case | 报告结构 3/3、requirements 覆盖 3/3、引用/接地/fixture 标注 100% |
+| v0.3 live DeepSeek 三 case | **3/3 confirmed**；Top-1 3/3、Top-3 3/3；同线程上下文与代码证据 3/3 |
+| Live CLI 冒烟 | 退出码 0，5 类产物，schema 0.3，remediation 3 条，产物无 secret |
+| 版本 | `tracemind 0.3.0` |
+
+最近一次 live gate 实际记录（`deepseek-flash`）：
+
+| Case | 报告状态 | Top-1 | Top-3 | LLM calls | Tools | Total tokens | Latency |
+|---|---|---|---|---|---|---|---|
+| `v03-c1-missing-row` | confirmed | hit | hit | 11 | 15 | 74,918 | 23.8s |
+| `v03-c2-duplicate-callback` | confirmed | hit | hit | 7 | 11 | 41,548 | 17.6s |
+| `v03-c3-mapper-stub` | confirmed | hit | hit | 11 | 17 | 71,296 | 23.8s |
+
+live 结果依赖 DeepSeek 模型版本、网络和 Key；它验证的是端到端可行性和证据链，不代表生产准确率或统计显著性。
+
+详细记录：
+
+- [v0.3 验收矩阵](specs/003-grounded-diagnosis/ACCEPTANCE.md)
+- [v0.3 设计](specs/003-grounded-diagnosis/DESIGN.md)
+- [v0.2 验收矩阵](specs/002-live-deepseek/ACCEPTANCE.md)
+- [v0.1 验收矩阵](specs/001-minimal-loop/ACCEPTANCE.md)
+
+## 已知限制
+
+- v0.3 只分析**用户提供的日志文件**；不做持续监听、日志采集、告警平台接入。同线程上下文仅限该文件内事件。
+- 数据库验证使用 Fixture + Fake backend；**不是生产数据库验证**，`confirmed` 仅对 fixture 数据成立。
+- 代码流是 tree-sitter 启发式候选边，不是运行时调用图；不解析 MyBatis XML、不做完整类型解析。
+- 无 catalog/skill；根因覆盖能力依赖模型自主规划。后续根据实际运行记录决定是否增加 catalog 或 skills。
+- 修复建议只展示，不自动应用；不生成可执行补丁。
+- 三 case 是合成 fixture，不代表生产准确率。
 
 ## 架构
 
 ```text
 CLI (Typer)
   -> LogParser (文本日志 + Java 堆栈)
-  -> TreeSitterJavaIndex (类/方法/行号/源码范围)
+  -> ThreadContext (同线程有序日志)
+  -> TreeSitterJavaIndex (类/方法/注解/调用点/SQL/源码范围)
   -> DiagnosisRuntime (确定性状态机/预算/停止/修复)
        -> LLM Provider (Mock / DeepSeek)
        -> ToolExecutor (参数校验/路径安全/去重/输出限制/审计)
-       -> Evidence Store + Evaluator
-       -> Report (Jinja2) + RunStore
+       -> Evidence Ledger + Assessments
+       -> Deterministic Evaluator
+       -> Remediation Validator
+       -> Report 0.3 (Jinja2) + RunStore
 ```
 
 核心目录：
@@ -210,23 +277,25 @@ CLI (Typer)
 src/tracemind/
   cli/            # 命令入口
   core/           # 领域模型与错误
-  log_analysis/   # 日志/堆栈解析
+  log_analysis/   # 日志/堆栈/同线程上下文
   indexing/       # tree-sitter Java 索引
-  tools/          # ToolSpec/Registry/Executor + 本地工具
+  tools/          # ToolSpec/Registry/Executor + 日志/代码/DB 工具
   llm/            # Provider 抽象、配置、Mock、DeepSeek
-  diagnosis/      # Runtime/Evidence/Evaluator/Report + 报告模板
+  diagnosis/      # Runtime/Evidence/Evaluator/Remediation/Report
+  verification/   # 只读验证后端与 Fixture 加载
   storage/        # RunStore
   observability/  # 事件 JSONL
 ```
 
 ## Agent 设计取舍
 
-- **自研薄运行时**：状态机、预算、审批边界、证据门槛和停止条件由确定性代码控制；不引入 LangGraph/PydanticAI。框架适合开放式自主循环，本项目的核心是可审计的诊断流程。
-- **Provider 中立**：DeepSeek 通过 OpenAI 兼容接口接入；Claude 预留 Anthropic 适配器。
-- **LLM 不确认根因**：LLM 规划工具；三类证据齐全后由 Evaluator 确认。
-- **只读工具**：日志搜索、事件上下文、符号查找、源码范围读取；所有调用经过 `ToolExecutor`。
-- **证据优先**：报告引用必须可解析；引用/证据 ID/状态不一致时降级。
-- **Mock 优先**：Demo、默认测试和 CI 不依赖实时模型；Mock 脚本确定性可重放。真实 DeepSeek 验证是显式 opt-in。
+- **自研薄运行时**：状态机、预算、证据门槛和停止条件由确定性代码控制；不引入 LangGraph/PydanticAI。
+- **LLM 不确认根因**：LLM 提出假设、规划工具和解释证据；Evaluator 决定状态。
+- **无 catalog**：三个 case 的期望答案不进入 runtime；用通用协议和证据约束引导模型。
+- **日志与代码互证**：同线程上下文用于重建业务步骤，代码流用于确认实际执行路径，二者缺一不可。
+- **DB 事实必须由工具验证**：依赖数据库数据/状态的假设需要 `db.get_row`，不能仅从日志或代码推断行状态。
+- **证据多绑定与可修订评估**：一个真实事实可服务多个 requirement；新事实可修正此前判断。
+- **Provider 中立**：DeepSeek 通过 OpenAI 兼容接口接入；Mock 用于确定性测试。
 
 ## Java 定位能力
 
@@ -234,82 +303,8 @@ src/tracemind/
 
 - 异常堆栈 → `OrderService.updateStatus` 源码位置
 - 类/方法/重载/嵌套类索引
-- `repo://` 源码行范围引用
-- `log://` 日志事件引用
-- 根因候选、证据 ID、缺失证据和限制说明
-
-v0.2 仍使用 **单个合成 Spring 风格仓库 + 单个日志 fixture**，用于验证定位流程与证据链，不代表生产验证。
-
-## 评估与验收
-
-当前 checkout 的验证结果（2026-10-21）：
-
-| 检查 | 结果 |
-|---|---|
-| 默认离线测试 | **146 passed, 2 skipped**（live 测试跳过，不访问网络） |
-| Live DeepSeek 测试 | **2 passed**（adapter + CLI，实际调用 `deepseek-flash`） |
-| `ruff check .` | 通过 |
-| `mypy src` | 通过（36 个源文件） |
-| Mock CLI Demo | 退出码 0，5 类产物，报告 `confirmed`，schema 0.2 |
-| Live CLI Demo | 退出码 0，报告 `confirmed`，三类证据，usage/latency 有值，产物无 secret |
-
-详细记录：
-
-- [v0.2 验收矩阵](specs/002-live-deepseek/ACCEPTANCE.md)
-- [v0.1 验收矩阵](specs/001-minimal-loop/ACCEPTANCE.md)
-
-说明：
-
-- 只有单个合成 fixture，不宣称统计意义上的准确率。
-- DeepSeek 输出具有非确定性；live 通过只证明当前环境下最小循环可运行，不代表生产准确率。
-- 6 个 Java fixture、LLM-only ablation、远程工具尚未实现。
-
-## v0.1 → v0.2
-
-| 能力 | v0.1 | v0.2 |
-|---|---|---|
-| DeepSeek 接入 | Adapter + fake-client 测试 | 真实 `deepseek-flash` live adapter + CLI 验证 |
-| Key 配置 | 环境变量 | 环境变量或项目 `.env`，带 preflight |
-| 重试 | SDK 默认行为 | 关闭 SDK 重试，自定义分类/退避/attempts |
-| Runtime 反馈 | 不反馈上一轮观察 | 上一轮工具/错误/证据 + 有界 repair |
-| Usage | 解析后丢弃 | 逐次调用 + run 级汇总，进入报告 |
-| 报告 schema | `0.1` | `0.2` |
-| 测试 | 全离线 | 全离线默认 + opt-in live gate |
-
-## 已知限制
-
-- 只支持一种文本日志 pattern；不支持 JSON 日志、多文件轮转、跨文件时间线。
-- 单仓库、内存索引；没有 SQLite/FTS5、增量索引、多仓库消歧。
-- tree-sitter 是静态语法分析；Lombok、Spring AOP/代理、反射和运行时分派不可见。
-- 本地只读工具；没有远程 MCP/SSH/DB/Redis、审批和完整 Policy Engine。
-- 没有 OTel/OTLP、长期保留、Web UI。
-- 只有一个合成 fixture；没有 6 个 Java fixture 和 LLM-only ablation。
-- 合成数据不代表生产验证；源码版本与线上部署版本一致性未验证。
-- 无 streaming/async、prompt caching、总运行 deadline、价格估算。
-- Live 验证依赖外部 Key/网络，结果可能随模型版本变化。
-
-## 文档
-
-- [v2.0 系统设计](docs/TraceMind_Agent_System_Design_v2.md)
-- [v0.2 SDD 索引](specs/002-live-deepseek/README.md)
-- [v0.2 验收矩阵](specs/002-live-deepseek/ACCEPTANCE.md)
-- [v0.2 T1–T6 specs/tasks](specs/002-live-deepseek/)
-- [v0.1 SDD 索引](specs/001-minimal-loop/README.md)
-- [v0.1 验收矩阵](specs/001-minimal-loop/ACCEPTANCE.md)
-
-## 下一步
-
-- 补齐 6 个 Java fixture：事务自调用、MyBatis N+1、连接池、Redis、异步/MDC、死锁。
-- 增加 LLM-only ablation 和证据覆盖率指标。
-- 接入一个 MySQL 只读 MCP 工具（stretch）。
-- 引入 SQLite FTS5、JDT sidecar、OTel。
-- 扩展 Java 知识 catalog 与更多日志格式。
-
-## 诚实边界
-
-本项目仍是原型，不是生产系统：
-
-- 不自动修复代码或配置。
-- 不执行生产写操作、任意 Shell/SQL/Redis 命令。
-- 不宣称生产准确率或替代 APM/SRE。
-- 远程工具、审批和 OTel 留在后续版本。
+- `@Update` SQL 与表名提取
+- 同线程日志上下文与跨线程噪声隔离
+- Mapper `default` 方法体检查
+- Fixture 数据库按主键单行验证
+- 结构化修复建议（code/test/ops/data），带证据绑定

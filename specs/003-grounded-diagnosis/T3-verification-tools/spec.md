@@ -1,7 +1,7 @@
 # T3 — 只读验证工具契约 Spec
 
 - **任务 ID**：T3
-- **状态**：planned
+- **状态**：implemented
 - **依赖**：T1
 - **下游**：T4、T5、T6、T7
 - **父设计**：[TraceMind v2.0](../../../docs/TraceMind_Agent_System_Design_v2.md)
@@ -136,6 +136,7 @@ class ReadOnlyVerificationBackend(Protocol):
   "row_count": 1,
   "sensitive_columns": [],
   "environment": "fixture",
+  "provenance": "fake_verification",
   "source_ref": "db://orders#schema"
 }
 ```
@@ -171,6 +172,7 @@ class ReadOnlyVerificationBackend(Protocol):
   "row": {"id": 10086, "status": "PAID", "updated_at": "..."},
   "redacted_columns": [],
   "environment": "fixture",
+  "provenance": "fake_verification",
   "source_ref": "db://orders/id=10086"
 }
 ```
@@ -187,11 +189,13 @@ class ReadOnlyVerificationBackend(Protocol):
   "row": null,
   "redacted_columns": [],
   "environment": "fixture",
+  "provenance": "fake_verification",
   "source_ref": "db://orders/id=10086"
 }
 ```
 
 - 敏感列值替换为 `"***"`，并在 `redacted_columns` 列出。
+- v0.3 仅注册 Fake backend，工具输出固定标注 `environment="fixture"`、`provenance="fake_verification"`；真实 backend 后续使用独立 provenance。
 - 不存在多行/任意过滤/排序/聚合能力。
 - 工具描述必须包含：只读、fixture、主键单行、非生产数据。
 
@@ -294,10 +298,14 @@ uv run mypy src
 
 | 日期 | 命令/检查 | 结果 |
 |---|---|---|
-| — | 待实现后回填 | PLANNED |
+| 2026-10-22 | `uv run pytest tests/unit/test_fake_verification.py tests/unit/test_db_tools.py tests/e2e/test_cli_verification.py -q` | 57 passed |
+| 2026-10-22 | `uv run pytest -q` | 279 passed, 2 skipped（live opt-in） |
+| 2026-10-22 | `uv run ruff check .` | All checks passed |
+| 2026-10-22 | `uv run mypy src` | Success, 45 source files |
 
 ## 11. 变更记录
 
 | 日期 | 变更 |
 |---|---|
 | 2026-10-22 | 创建 T3 spec：只读验证协议、Fake backend、db.describe_table/db.get_row、白名单与 fixture 标注 |
+| 2026-10-22 | 实现完成：严格数据校验、脱敏、fixture/provenance 标注、CLI 预校验与 run.json 元数据；补充 DB 工具输出 provenance |
