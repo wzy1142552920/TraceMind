@@ -10,6 +10,7 @@ from time import perf_counter
 from typing import Any, Literal
 from uuid import uuid4
 
+from tracemind.artifacts import ArtifactBundle
 from tracemind.core.models import LogEvent, ParsedLog
 from tracemind.diagnosis.budget import Budget, BudgetUsage
 from tracemind.diagnosis.evidence import (
@@ -32,8 +33,8 @@ from tracemind.diagnosis.evidence_mapping import (
 from tracemind.diagnosis.ledger import EvidenceLedger, InvalidBindingError
 from tracemind.diagnosis.prompts import (
     REMEDIATION_SYSTEM_PROMPT,
-    SYSTEM_PROMPT,
     build_remediation_prompt,
+    build_system_prompt,
     build_user_prompt,
 )
 from tracemind.diagnosis.state import (
@@ -93,11 +94,14 @@ class DiagnosisRuntime:
         model: str = "unknown",
         repair_attempts: int = 2,
         verification_backend: ReadOnlyVerificationBackend | None = None,
+        artifacts: ArtifactBundle | None = None,
     ) -> None:
         self._tool_registry = tool_registry or build_default_registry(
-            verification_backend=verification_backend
+            verification_backend=verification_backend,
+            artifacts=artifacts,
         )
         self._verification_backend = verification_backend
+        self._artifacts = artifacts
         self._repo_root = repo_root
         self._provider_name = provider_name
         self._model = model
@@ -213,6 +217,11 @@ class DiagnosisRuntime:
                 remediation_actions=workspace.remediation_actions,
                 rejected_remediations=workspace.rejected_remediations,
                 verification_environment=verification_environment,
+                artifacts=(
+                    list(self._artifacts.records)
+                    if self._artifacts is not None
+                    else []
+                ),
                 tool_calls=tool_records,
                 llm_calls=llm_calls,
                 llm_usage=summarize_llm_usage(llm_calls),
@@ -344,6 +353,16 @@ class DiagnosisRuntime:
             )
             return stored, True, False
 
+        if self._artifacts is not None:
+            add_limitation(
+                "JVM snapshots are user-provided point-in-time text files; "
+                "no live attach or collection was performed."
+            )
+            add_limitation(
+                "A same-thread log context is not required when JVM artifacts "
+                "are provided."
+            )
+
         emit(
             "diagnosis.started",
             {
@@ -469,6 +488,7 @@ class DiagnosisRuntime:
             log_root=Path(parsed_log.source_file).parent,
             workspace=workspace,
             verification_backend=self._verification_backend,
+            artifacts=self._artifacts,
         )
         executor = ToolExecutor(
             self._tool_registry,
@@ -531,13 +551,23 @@ class DiagnosisRuntime:
                 active_names = diagnosis_tool_names
             return definitions_for(active_names)
 
+        def requires_same_thread_context() -> bool:
+            return (
+                primary is not None
+                and primary.thread is not None
+                and self._artifacts is None
+            )
+
         def required_thread() -> str | None:
-            return primary.thread if primary is not None else None
+            if not requires_same_thread_context():
+                return None
+            assert primary is not None
+            return primary.thread
 
         def evaluate_current() -> EvaluationResult:
             nonlocal last_evaluation
             last_evaluation = workspace.evaluate(
-                require_log_thread_context=required_thread() is not None,
+                require_log_thread_context=requires_same_thread_context(),
                 required_log_thread=required_thread(),
             )
             sync_usage()
@@ -558,6 +588,8 @@ class DiagnosisRuntime:
             return last_evaluation
 
         def thread_context_assessed() -> bool:
+            if not requires_same_thread_context():
+                return True
             target_thread = required_thread()
             if target_thread is None:
                 return True
@@ -582,7 +614,7 @@ class DiagnosisRuntime:
         ) -> str:
             if not workspace.hypotheses:
                 return error_reason or "no_hypotheses"
-            if not thread_context_assessed():
+            if requires_same_thread_context() and not thread_context_assessed():
                 return "missing_thread_context"
             if len(workspace.hypotheses) < 2:
                 return "insufficient_hypotheses"
@@ -621,16 +653,26 @@ class DiagnosisRuntime:
                 budget=budget,
                 usage=usage,
                 previous_observation=previous_observation(),
+                artifacts=(
+                    list(self._artifacts.records)
+                    if self._artifacts is not None
+                    else None
+                ),
             )
             return [
-                Message(role="system", content=SYSTEM_PROMPT),
+                Message(
+                    role="system",
+                    content=build_system_prompt(
+                        has_artifacts=self._artifacts is not None
+                    ),
+                ),
                 Message(role="user", content=user_content),
             ]
 
         def complete_if_confirmed(evaluation: EvaluationResult) -> RunResult | None:
             if not evaluation.run_confirmed:
                 return None
-            if required_thread() is not None and not thread_context_assessed():
+            if requires_same_thread_context() and not thread_context_assessed():
                 return None
             return finalize(RuntimeState.COMPLETED, StopReason.EVIDENCE_SUFFICIENT)
 
@@ -1074,13 +1116,21 @@ class DiagnosisRuntime:
                 revised_assessment_ids: list[str] = []
 
                 if result.ok and internal_tool_name not in _LOGGING_CONTROL_TOOLS:
-                    outcome = map_tool_result(result)
+                    outcome = map_tool_result(result, artifacts=self._artifacts)
                     if outcome.failure_reason is not None:
                         emit(
                             "evidence.mapping_failed",
                             {
                                 "tool_call_id": call.id,
                                 "reason": outcome.failure_reason,
+                            },
+                        )
+                    for warning in outcome.warnings:
+                        emit(
+                            "evidence.mapping_warning",
+                            {
+                                "tool_call_id": call.id,
+                                "reason": warning,
                             },
                         )
                     for draft in outcome.drafts:
@@ -1279,7 +1329,12 @@ def _find_seed_matches(
     primary: LogEvent,
     java_index: JavaIndex,
 ) -> list[SourceMatch]:
-    for frame in primary.stack_frames:
+    frames = list(primary.stack_frames[:50])
+    for cause in primary.cause_chain:
+        frames.extend(cause.stack_frames[:50])
+        if len(frames) >= 100:
+            break
+    for frame in frames[:100]:
         matches = java_index.resolve_frame(frame)
         if matches:
             return matches

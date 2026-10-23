@@ -204,7 +204,7 @@ def test_confirmed_report_shape_and_sorting() -> None:
     parsed = LogParser().parse(LOG_FIXTURE)
     report = build_report(_result(remediation=[_action()]), parsed, REPO_FIXTURE)
 
-    assert report.schema_version == "0.3"
+    assert report.schema_version == "0.4"
     assert report.status == "confirmed"
     assert [item.hypothesis_id for item in report.hypotheses] == [
         "hyp_001",

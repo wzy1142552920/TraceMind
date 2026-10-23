@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from tracemind.artifacts import ArtifactBundle, load_artifacts
 from tracemind.diagnosis.evidence import RunResult
 from tracemind.diagnosis.report import (
     Report,
@@ -36,6 +37,15 @@ REPO_BY_CASE = {
     "v03-c2-duplicate-callback": "minimal-order-service-fixed",
     "v03-c3-mapper-stub": "minimal-order-service",
 }
+JVM_CASE_IDS = (
+    "v04-j1-cpu-high",
+    "v04-j2-memory-oom",
+)
+JVM_REPO_BY_CASE = {
+    "v04-j1-cpu-high": "v04-jvm-hot-loop",
+    "v04-j2-memory-oom": "v04-jvm-unbounded-cache",
+}
+JVM_SERVICE = "order-service"
 
 
 @dataclass(frozen=True)
@@ -57,6 +67,31 @@ class CaseRun:
 
     fixture: CaseFixture
     expected: dict[str, Any]
+    result: RunResult
+    report: Report
+
+
+@dataclass(frozen=True)
+class JvmCaseFixture:
+    """Filesystem locations for one synthetic JVM incident case."""
+
+    case_id: str
+    repo_name: str
+    service: str
+    log_path: Path
+    repo_path: Path
+    artifacts_path: Path
+    mock_path: Path
+    expected_path: Path
+
+
+@dataclass(frozen=True)
+class JvmCaseRun:
+    """One deterministic offline JVM diagnosis run."""
+
+    fixture: JvmCaseFixture
+    expected: dict[str, Any]
+    artifacts: ArtifactBundle
     result: RunResult
     report: Report
 
@@ -109,6 +144,59 @@ def run_case(case_id: str) -> CaseRun:
     return CaseRun(
         fixture=fixture,
         expected=load_expected(case_id),
+        result=result,
+        report=report,
+    )
+
+
+def jvm_case_fixture(case_id: str) -> JvmCaseFixture:
+    """Resolve all fixture paths for a JVM case id."""
+    repo_name = JVM_REPO_BY_CASE[case_id]
+    return JvmCaseFixture(
+        case_id=case_id,
+        repo_name=repo_name,
+        service=JVM_SERVICE,
+        log_path=FIXTURES / "logs" / case_id / "incident.log",
+        repo_path=FIXTURES / "repos" / repo_name,
+        artifacts_path=FIXTURES / "artifacts" / case_id,
+        mock_path=FIXTURES / "mock" / f"{case_id}.json",
+        expected_path=FIXTURES / "expected" / f"{case_id}.yaml",
+    )
+
+
+@cache
+def load_jvm_expected(case_id: str) -> dict[str, Any]:
+    """Load the expected-answer document for a JVM case."""
+    path = jvm_case_fixture(case_id).expected_path
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+@cache
+def run_jvm_case(case_id: str) -> JvmCaseRun:
+    """Run one JVM case offline through the real runtime and report builder."""
+    fixture = jvm_case_fixture(case_id)
+    parsed = LogParser().parse(fixture.log_path)
+    index = TreeSitterJavaIndex()
+    index.index(fixture.repo_path)
+    artifacts = load_artifacts(fixture.artifacts_path, fixture.service)
+    provider = MockProvider.from_script(fixture.mock_path)
+    runtime = DiagnosisRuntime(
+        repo_root=fixture.repo_path,
+        provider_name="mock",
+        model="v04-case",
+        artifacts=artifacts,
+    )
+    result = runtime.run(
+        parsed,
+        index,
+        fixture.service,
+        provider,
+    )
+    report = build_report(result, parsed, fixture.repo_path)
+    return JvmCaseRun(
+        fixture=fixture,
+        expected=load_jvm_expected(case_id),
+        artifacts=artifacts,
         result=result,
         report=report,
     )

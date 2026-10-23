@@ -206,7 +206,7 @@ def test_live_case_report_is_grounded(case_id: str) -> None:
     report = run.report
     result = run.result
     assert report is not None and result is not None
-    assert report.schema_version == "0.3"
+    assert report.schema_version == "0.4"
     assert report.status in {"confirmed", "probable"}, (
         f"{case_id}: live status was {report.status!r}"
     )

@@ -1,4 +1,4 @@
-"""Deterministic report generation and citation validation for v0.3."""
+"""Deterministic report generation and citation validation for v0.4."""
 
 from __future__ import annotations
 
@@ -7,9 +7,11 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from jinja2 import Environment, PackageLoader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from tracemind.artifacts import ArtifactRecord
 from tracemind.core.models import ParsedLog
+from tracemind.diagnosis.evaluator import MECHANISM_KINDS
 from tracemind.diagnosis.evidence import (
     Evidence,
     EvidenceKind,
@@ -25,7 +27,7 @@ from tracemind.diagnosis.remediation import allowed_evidence_for
 from tracemind.diagnosis.state import RuntimeState
 from tracemind.workspace.paths import resolve_under_root
 
-_SCHEMA_VERSION = "0.3"
+_SCHEMA_VERSION = "0.4"
 _TABLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _REPO_REF_RE = re.compile(
     r"^repo://(?P<path>.+?)#L(?P<start>\d+)(?:-L(?P<end>\d+))?$"
@@ -34,9 +36,79 @@ _LOG_FILE_REF_RE = re.compile(
     r"^log://(?P<path>[^#]+)#(?:thread=(?P<thread>[^&]+)&)?"
     r"L(?P<start>\d+)-L(?P<end>\d+)$"
 )
+_ARTIFACT_REF_RE = re.compile(
+    r"^artifact://(?P<artifact_id>[a-z][a-z0-9_-]{0,31})"
+    r"#L(?P<start>\d+)(?:-L(?P<end>\d+))?$"
+)
 _DB_KINDS = frozenset({EvidenceKind.DB_ROW, EvidenceKind.DB_SCHEMA})
+JVM_EVIDENCE_KINDS = frozenset(
+    {
+        EvidenceKind.THREAD_DUMP,
+        EvidenceKind.THREAD_CPU,
+        EvidenceKind.GC_EVENT,
+        EvidenceKind.GC_SUMMARY,
+        EvidenceKind.HEAP_SUMMARY,
+    }
+)
+_LOG_EVIDENCE_KINDS = frozenset(
+    {EvidenceKind.LOG_EVENT, EvidenceKind.LOG_THREAD_CONTEXT}
+)
+_CODE_EVIDENCE_KINDS = frozenset(
+    {
+        EvidenceKind.STACK_FRAME,
+        EvidenceKind.SOURCE_CODE,
+        EvidenceKind.CALL_PATH,
+        EvidenceKind.ANNOTATION,
+        EvidenceKind.CONFIG,
+    }
+)
 _CONFIRMED = HypothesisStatus.CONFIRMED
 _SUPPORTED = HypothesisStatus.SUPPORTED
+
+JVM_SNAPSHOT_LIMITATION = (
+    "JVM snapshots are user-provided point-in-time text files; no live "
+    "attach or collection was performed."
+)
+JVM_BINARY_LIMITATION = (
+    "Heap dump/JFR was not parsed; CPU/memory conclusions are limited to the "
+    "snapshot window."
+)
+JVM_ONLY_LIMITATION = (
+    "No code mechanism evidence was found; JVM-only evidence cannot confirm "
+    "a root cause."
+)
+SAME_THREAD_OPTIONAL_LIMITATION = (
+    "A same-thread log context is not required when JVM artifacts are "
+    "provided."
+)
+
+_MAX_REPORT_WARNINGS = 10
+_MAX_WARNING_LENGTH = 256
+_MAX_ERROR_REF_LENGTH = 200
+
+
+def _basename(value: str) -> str:
+    return Path(value.replace("\\", "/")).name
+
+
+def _truncate(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return value[: limit - 1] + "…"
+
+
+def _source_category(kind: EvidenceKind) -> str:
+    if kind in JVM_EVIDENCE_KINDS:
+        return "artifact"
+    if kind in _LOG_EVIDENCE_KINDS:
+        return "log"
+    if kind in _CODE_EVIDENCE_KINDS:
+        return "code"
+    if kind is EvidenceKind.SQL:
+        return "sql"
+    if kind in _DB_KINDS:
+        return "data"
+    return "evidence"
 
 _TEMPLATE_ENV = Environment(
     loader=PackageLoader("tracemind.diagnosis", "templates"),
@@ -75,11 +147,40 @@ class ReportHypothesis(BaseModel):
     falsifiers: list[str] = Field(default_factory=list)
 
 
+class ReportArtifact(BaseModel):
+    """Non-sensitive metadata for one user-provided JVM snapshot."""
+
+    artifact_id: str
+    kind: str
+    source_name: str
+    source_environment: str = "user_provided"
+    line_count: int = Field(ge=1)
+    truncated: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("source_name")
+    @classmethod
+    def _keep_basename(cls, value: str) -> str:
+        name = _basename(value)
+        if not name:
+            raise ValueError("source_name must not be empty")
+        return name
+
+    @field_validator("warnings")
+    @classmethod
+    def _bound_warnings(cls, value: list[str]) -> list[str]:
+        return [
+            _truncate(item, _MAX_WARNING_LENGTH)
+            for item in value[:_MAX_REPORT_WARNINGS]
+        ]
+
+
 class ReportSource(BaseModel):
     """A referenced source and, when available, its reviewable context."""
 
     evidence_id: str
     kind: str
+    category: str = "evidence"
     source_ref: str
     claim: str
     verified: bool = False
@@ -135,16 +236,18 @@ class ReportValidation(BaseModel):
     """Result of deterministic reference, grounding, and status checks."""
 
     citations_valid: bool = False
+    artifact_citations_valid: bool = False
     evidence_ids_valid: bool = False
     hypotheses_valid: bool = False
     remediation_grounded: bool = False
     verification_labeled: bool = False
     status_consistent: bool = False
+    artifacts_labeled: bool = False
     errors: list[str] = Field(default_factory=list)
 
 
 class Report(BaseModel):
-    """The JSON report schema for v0.3."""
+    """The JSON report schema for v0.4."""
 
     schema_version: str = _SCHEMA_VERSION
     incident_id: str
@@ -152,6 +255,7 @@ class Report(BaseModel):
     service: str
     status: str
     summary: str
+    artifacts: list[ReportArtifact] = Field(default_factory=list)
     hypotheses: list[ReportHypothesis] = Field(default_factory=list)
     remediation_plan: list[ReportRemediationAction] = Field(default_factory=list)
     verification: ReportVerification = Field(default_factory=ReportVerification)
@@ -223,7 +327,14 @@ def build_report(
             "No validated remediation action was available; the report "
             "contains no remediation plan.",
         )
+    if result.artifacts:
+        _append_limitation(limitations, JVM_SNAPSHOT_LIMITATION)
+        _append_limitation(limitations, JVM_BINARY_LIMITATION)
+        _append_limitation(limitations, SAME_THREAD_OPTIONAL_LIMITATION)
+        if _has_jvm_only_candidate(result):
+            _append_limitation(limitations, JVM_ONLY_LIMITATION)
 
+    artifacts = _build_artifacts(result)
     hypotheses = _build_hypotheses(result)
     remediation_plan = [
         _report_action(action, result.hypotheses)
@@ -238,6 +349,7 @@ def build_report(
         service=result.service,
         status=status,
         summary=summary,
+        artifacts=artifacts,
         hypotheses=hypotheses,
         remediation_plan=remediation_plan,
         verification=verification,
@@ -272,6 +384,8 @@ def validate_report(
 ) -> Report:
     """Validate citations, evidence IDs, hypotheses, and remediation grounding."""
     citation_errors: list[str] = []
+    artifact_citation_errors: list[str] = []
+    artifact_label_errors: list[str] = []
     evidence_errors: list[str] = []
     hypothesis_errors: list[str] = []
     remediation_errors: list[str] = []
@@ -280,6 +394,9 @@ def validate_report(
     evidence_ids = set(evidence_by_id)
     evidence_source_refs = {
         item.source_ref for item in result.evidence
+    }
+    artifacts_by_id = {
+        record.artifact_id: record for record in result.artifacts
     }
     thread_evidence = [
         item
@@ -298,11 +415,35 @@ def validate_report(
             repo_root,
             thread_evidence,
             evidence_source_refs,
+            artifacts_by_id,
         )
         source.verified = valid
         if not valid:
-            citation_errors.append(
-                f"invalid source reference {source.source_ref}: {error}"
+            message = (
+                f"invalid source reference "
+                f"{_truncate(source.source_ref, _MAX_ERROR_REF_LENGTH)}: "
+                f"{error}"
+            )
+            if source.source_ref.startswith("artifact://"):
+                artifact_citation_errors.append(message)
+            else:
+                citation_errors.append(message)
+
+    expected_artifact_ids = [
+        record.artifact_id for record in result.artifacts
+    ]
+    reported_artifact_ids = [
+        artifact.artifact_id for artifact in report.artifacts
+    ]
+    if reported_artifact_ids != expected_artifact_ids:
+        artifact_label_errors.append(
+            "report artifacts do not match the loaded artifact records"
+        )
+    for artifact in report.artifacts:
+        if artifact.source_environment != "user_provided":
+            artifact_label_errors.append(
+                f"artifact {artifact.artifact_id} is not labeled as "
+                "user_provided"
             )
 
     for hypothesis in report.hypotheses:
@@ -370,10 +511,12 @@ def validate_report(
 
     verification_errors.extend(_validate_verification(report, result))
 
-    citations_valid = not citation_errors
+    artifact_citations_valid = not artifact_citation_errors
+    citations_valid = not citation_errors and artifact_citations_valid
     evidence_ids_valid = not evidence_errors
     hypotheses_valid = not hypothesis_errors
     verification_labeled = not verification_errors
+    artifacts_labeled = not artifact_label_errors
     expected_status = report_status(result)
     status_consistent = report.status == expected_status
     status_errors: list[str] = []
@@ -398,13 +541,17 @@ def validate_report(
 
     report.validation = ReportValidation(
         citations_valid=citations_valid,
+        artifact_citations_valid=artifact_citations_valid,
         evidence_ids_valid=evidence_ids_valid,
         hypotheses_valid=hypotheses_valid,
         remediation_grounded=remediation_grounded,
         verification_labeled=verification_labeled,
         status_consistent=status_consistent,
+        artifacts_labeled=artifacts_labeled,
         errors=[
             *citation_errors,
+            *artifact_citation_errors,
+            *artifact_label_errors,
             *evidence_errors,
             *hypothesis_errors,
             *remediation_errors,
@@ -555,13 +702,17 @@ def _build_sources(
         if evidence is None:
             continue
         sources.append(_report_source(evidence))
-    return sources
+    return sorted(
+        sources,
+        key=lambda source: (source.source_ref, source.evidence_id),
+    )
 
 
 def _report_source(evidence: Evidence) -> ReportSource:
     source = ReportSource(
         evidence_id=evidence.evidence_id,
         kind=evidence.kind.value,
+        category=_source_category(evidence.kind),
         source_ref=evidence.source_ref,
         claim=evidence.claim,
     )
@@ -581,6 +732,38 @@ def _report_source(evidence: Evidence) -> ReportSource:
                 if isinstance(item, dict) and "message" in item
             ]
     return source
+
+
+def _build_artifacts(result: RunResult) -> list[ReportArtifact]:
+    return [
+        ReportArtifact(
+            artifact_id=record.artifact_id,
+            kind=record.kind.value,
+            source_name=_basename(record.source_name),
+            source_environment=record.source_environment,
+            line_count=record.line_count,
+            truncated=record.truncated,
+            warnings=list(record.warnings),
+        )
+        for record in result.artifacts
+    ]
+
+
+def _has_jvm_only_candidate(result: RunResult) -> bool:
+    evidence_by_id = {item.evidence_id: item for item in result.evidence}
+    for hypothesis in result.hypotheses:
+        if hypothesis.status not in {_CONFIRMED, _SUPPORTED}:
+            continue
+        cited = [
+            evidence_by_id[evidence_id]
+            for evidence_id in hypothesis.evidence_ids
+            if evidence_id in evidence_by_id
+        ]
+        if not any(item.kind in JVM_EVIDENCE_KINDS for item in cited):
+            continue
+        if not any(item.kind in MECHANISM_KINDS for item in cited):
+            return True
+    return False
 
 
 def _build_verification(result: RunResult) -> ReportVerification:
@@ -782,8 +965,20 @@ def _check_source_ref(
     repo_root: Path,
     thread_evidence: list[Evidence],
     evidence_source_refs: set[str],
+    artifacts_by_id: dict[str, ArtifactRecord],
 ) -> tuple[bool, str]:
     source_ref = source.source_ref
+    if source_ref.startswith("artifact://"):
+        artifact_match = _ARTIFACT_REF_RE.fullmatch(source_ref)
+        if artifact_match is None:
+            return False, "malformed artifact reference"
+        record = artifacts_by_id.get(artifact_match.group("artifact_id"))
+        if record is None:
+            return False, "artifact id does not exist"
+        start = int(artifact_match.group("start"))
+        end = int(artifact_match.group("end") or start)
+        return _check_range(start, end, record.line_count)
+
     repo_match = _REPO_REF_RE.fullmatch(source_ref)
     if repo_match is not None:
         try:

@@ -83,7 +83,7 @@ def test_live_cli_completes_fixture(tmp_path: Path) -> None:
     } <= {path.name for path in run_dir.iterdir()}
 
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
-    assert report["schema_version"] == "0.3"
+    assert report["schema_version"] == "0.4"
     assert report["status"] in {"confirmed", "probable"}
     assert report["verification"]["environment"] == "fixture"
     assert report["verification"]["backend"] == "fake"

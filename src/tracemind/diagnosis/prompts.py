@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from tracemind.artifacts.models import ArtifactRecord
 from tracemind.core.models import LogEvent, StackFrame
 from tracemind.diagnosis.evidence import (
     EvaluationResult,
@@ -108,6 +109,71 @@ Remediation:
 - Later remediation suggestions must be based on supported/confirmed hypotheses
   and real evidence IDs. Never propose ungrounded edits or automatic fixes.
 """
+
+_THREAD_REQUIREMENT_RULE = (
+    "When the primary event has a thread, every\n"
+    "   hypothesis must include a requirement whose evidence_kinds contain\n"
+    "   log_thread_context."
+)
+_ARTIFACT_THREAD_RULE = (
+    "When JVM artifacts are provided, same-thread log context is optional;\n"
+    "   use the JVM snapshot tools together with code evidence."
+)
+_THREAD_CONFIRMATION_RULE = (
+    "- When the primary event has a thread, an assessed same-thread log context is\n"
+    "  required. Do not substitute a context from another thread."
+)
+_ARTIFACT_CONFIRMATION_RULE = (
+    "- When JVM artifacts are provided, same-thread log context is optional; a\n"
+    "  snapshot cannot replace a code mechanism."
+)
+
+JVM_ANALYSIS_GUIDANCE = """\
+JVM snapshot analysis:
+- JVM tools only expose user-provided point-in-time snapshots. Never describe
+  them as live collection or real-time observation.
+- First planning round with JVM artifacts: propose each relevant mechanism as
+  its own hypothesis, before investigation. With a thread CPU or thread dump
+  artifact, include a CPU-bound application-code candidate and a separate
+  blocking/lock/GC candidate. With a GC log or heap histogram, include a
+  live-heap growth candidate and a separate capacity/single-large-object
+  candidate. Never join these mechanisms with "or" in one statement.
+- A requirement that uses the primary thread's log context must be satisfied by
+  logs.get_thread_context, bound to that requirement. Seeded context is not
+  tool-derived; do not assess it directly.
+- CPU: inspect the thread CPU snapshot, map each hot TID to a thread dump nid,
+  then inspect RUNNABLE stack heads and the code they execute. Distinguish
+  business threads from GC/compiler threads. A high-CPU RUNNABLE application
+  thread executing application code is positive evidence for CPU-bound work;
+  request latency alone does not establish a remote or blocking call.
+- The request thread that logged the timeout is not necessarily the CPU-hot
+  thread. Keep the actual hot thread identity in the hypothesis. A waiting
+  request thread plus a different RUNNABLE application thread at high CPU can
+  mean CPU saturation on that worker delayed the request; do not require the
+  logged thread itself to be hot. Use the GC summary and deadlock/lock state to
+  rule in or out GC pressure and lock contention.
+- Memory/OOM: combine GC summary (Full GC frequency and post-GC heap
+  occupancy), heap histogram dominant classes, and code paths with unbounded
+  collections, caches, or large objects. One snapshot cannot prove a leak;
+  require a code-level mechanism before claiming a root cause.
+- A JVM symptom without a code/config/DB mechanism can at most be supported.
+- Do not assume a JVM tool exists unless it is listed, and never request live
+  attach, shell execution, or arbitrary file access.
+"""
+
+
+def build_system_prompt(has_artifacts: bool = False) -> str:
+    """Render the base system prompt with optional JVM snapshot guidance."""
+    if not has_artifacts:
+        return SYSTEM_PROMPT
+    prompt = SYSTEM_PROMPT.replace(
+        _THREAD_REQUIREMENT_RULE,
+        _ARTIFACT_THREAD_RULE,
+    ).replace(
+        _THREAD_CONFIRMATION_RULE,
+        _ARTIFACT_CONFIRMATION_RULE,
+    )
+    return f"{prompt}\n{JVM_ANALYSIS_GUIDANCE}"
 
 
 REMEDIATION_SYSTEM_PROMPT = """\
@@ -224,6 +290,7 @@ def build_user_prompt(
     budget: Budget,
     usage: BudgetUsage,
     previous_observation: str | None,
+    artifacts: list[ArtifactRecord] | None = None,
 ) -> str:
     """Build a bounded user prompt from runtime-owned state."""
     budget_remaining = (
@@ -252,6 +319,16 @@ def build_user_prompt(
         if previous_observation
         else ["(none)"]
     )
+    artifact_lines = _artifact_lines(artifacts or [])
+    artifact_section = (
+        [
+            "JVM artifacts (user-provided point-in-time snapshots, not live):",
+            *artifact_lines,
+            "",
+        ]
+        if artifact_lines
+        else []
+    )
 
     return "\n".join(
         [
@@ -261,6 +338,7 @@ def build_user_prompt(
             "Thread context (same thread, ordered):",
             *context_lines,
             "",
+            *artifact_section,
             "Evidence ledger:",
             *(evidence_lines or ["- (none)"]),
             "",
@@ -394,6 +472,20 @@ def _incident_lines(service: str, primary: LogEvent | None) -> list[str]:
         lines.extend(_frame_line(frame) for frame in primary.stack_frames[:5])
     else:
         lines.append("- stack frames: (none)")
+    if primary.cause_chain:
+        lines.append("- cause chain:")
+        for index, cause in enumerate(primary.cause_chain[:5], start=1):
+            label = "suppressed" if cause.kind == "suppressed" else "caused by"
+            lines.append(
+                f"  - {label} [{index}] {cause.exception_type}: "
+                f"{_truncate(cause.exception_message or '', 200)}"
+            )
+            for frame in cause.stack_frames[:3]:
+                lines.append(f"    {_frame_line(frame)}")
+        if len(primary.cause_chain) > 5:
+            lines.append(
+                f"  - ... and {len(primary.cause_chain) - 5} more cause(s)"
+            )
     return lines
 
 
@@ -419,6 +511,23 @@ def _thread_context_lines(context: ThreadContext | None) -> list[str]:
             f"  - L{item.line} {item.level or '-'} [{item.thread}] "
             f"{item.logger_class}: {_truncate(item.message, 220)}"
         )
+    return lines
+
+
+def _artifact_lines(artifacts: list[ArtifactRecord]) -> list[str]:
+    lines: list[str] = []
+    for record in artifacts[:8]:
+        line = (
+            f"- id={record.artifact_id} kind={record.kind.value} "
+            f"source={record.source_name} lines={record.line_count} "
+            f"truncated={str(record.truncated).lower()}"
+        )
+        if record.warnings:
+            warnings = "; ".join(
+                _truncate(warning, 160) for warning in record.warnings[:3]
+            )
+            line += f" warnings={warnings}"
+        lines.append(line)
     return lines
 
 
@@ -582,4 +691,4 @@ def _truncate(value: str, limit: int) -> str:
     return flattened[: limit - 1] + "…"
 
 
-__all__ = ["SYSTEM_PROMPT", "build_user_prompt"]
+__all__ = ["SYSTEM_PROMPT", "build_system_prompt", "build_user_prompt"]

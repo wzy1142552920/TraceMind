@@ -1,0 +1,4 @@
+[11:01:30.010][info][gc] GC(88) Pause Full (G1 Evacuation Pause) 1980M->1910M(2048M) 812.441ms
+[11:01:35.020][info][gc] GC(89) Pause Full (G1 Evacuation Pause) 1985M->1922M(2048M) 845.103ms
+[11:01:40.030][info][gc] GC(90) Pause Full (G1 Evacuation Pause) 1990M->1935M(2048M) 901.772ms
+[11:01:45.040][info][gc] GC(91) Pause Full (G1 Evacuation Pause) 1995M->1948M(2048M) 955.218ms

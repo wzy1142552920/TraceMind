@@ -40,11 +40,11 @@ _VALIDATION_FLAGS = (
 
 @pytest.mark.parametrize("case_id", CASE_IDS, ids=CASE_IDS)
 def test_case_report_matches_expected(case_id: str) -> None:
-    """Each case must produce a fully grounded, confirmed schema 0.3 report."""
+    """Each case must produce a fully grounded, confirmed schema 0.4 report."""
     run = run_case(case_id)
     expected = run.expected
     report = run.report
-    assert report.schema_version == "0.3", f"{case_id}: expected schema 0.3"
+    assert report.schema_version == "0.4", f"{case_id}: expected schema 0.4"
     assert report.status == expected["expected_status"], (
         f"{case_id}: got report status {report.status!r}"
     )

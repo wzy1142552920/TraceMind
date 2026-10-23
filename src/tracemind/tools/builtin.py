@@ -6,6 +6,7 @@ from typing import Any, Self, cast
 
 from pydantic import BaseModel, Field, model_validator
 
+from tracemind.artifacts import ArtifactBundle
 from tracemind.core.models import LogEvent, ParsedLog
 from tracemind.indexing.java_index import JavaIndex, JavaIndexError, SourceMatch
 from tracemind.log_analysis.thread_context import (
@@ -22,6 +23,7 @@ from tracemind.tools.contracts import (
     ToolSpec,
 )
 from tracemind.tools.control import register_control_tools
+from tracemind.tools.jvm import register_jvm_tools
 from tracemind.tools.registry import ToolRegistry
 from tracemind.tools.verification import register_verification_tools
 from tracemind.verification import ReadOnlyVerificationBackend
@@ -75,6 +77,7 @@ class CodeGetSourceRangeArgs(EvidenceToolMeta):
 
 def build_default_registry(
     verification_backend: ReadOnlyVerificationBackend | None = None,
+    artifacts: ArtifactBundle | None = None,
 ) -> ToolRegistry:
     """Register local read-only tools and v0.3 diagnosis control tools."""
     registry = ToolRegistry()
@@ -125,6 +128,8 @@ def build_default_registry(
     register_code_flow_tools(registry)
     if verification_backend is not None:
         register_verification_tools(registry, verification_backend)
+    if artifacts is not None:
+        register_jvm_tools(registry, artifacts)
     register_control_tools(registry)
     return registry
 

@@ -10,9 +10,10 @@ import typer
 from rich.console import Console
 
 from tracemind import __version__
+from tracemind.artifacts import ArtifactBundle, ArtifactError, load_artifacts
 from tracemind.core.errors import JavaIndexError, LLMConfigError, LogParseError
 from tracemind.diagnosis.budget import Budget
-from tracemind.diagnosis.report import build_report
+from tracemind.diagnosis.report import JVM_EVIDENCE_KINDS, build_report
 from tracemind.diagnosis.runtime import DiagnosisRuntime
 from tracemind.diagnosis.state import RuntimeState
 from tracemind.indexing.java_index import TreeSitterJavaIndex
@@ -147,6 +148,15 @@ def diagnose(
             "Fixture-only JSON data enabling read-only DB verification tools."
         ),
     ),
+    artifacts: Path | None = typer.Option(
+        None,
+        "--artifacts",
+        file_okay=False,
+        dir_okay=True,
+        help=(
+            "Directory with manifest.json and user-provided JVM text snapshots."
+        ),
+    ),
     output_dir: Path = typer.Option(
         Path(".tracemind/runs"),
         "--output-dir",
@@ -199,6 +209,13 @@ def diagnose(
     ),
 ) -> None:
     """Diagnose a Java incident from a log file and a local repository."""
+    artifact_bundle: ArtifactBundle | None = None
+    if artifacts is not None:
+        try:
+            artifact_bundle = load_artifacts(artifacts, service)
+        except ArtifactError as exc:
+            _fail(f"artifacts error: {exc}", code=2)
+
     verification_backend: FakeVerificationBackend | None = None
     verification_meta: dict[str, Any] | None = None
     if verification_data is not None:
@@ -255,6 +272,7 @@ def diagnose(
         model=model_label,
         repair_attempts=repair_attempts,
         verification_backend=verification_backend,
+        artifacts=artifact_bundle,
     )
     try:
         result = runtime.run(
@@ -273,8 +291,18 @@ def diagnose(
 
     try:
         report = build_report(result, parsed_log, repo)
+        artifact_kinds = list(
+            dict.fromkeys(
+                record.kind.value for record in result.artifacts
+            )
+        )
+        jvm_evidence_count = sum(
+            1
+            for item in result.evidence
+            if item.kind in JVM_EVIDENCE_KINDS
+        )
         run_meta = {
-            "schema_version": "0.3",
+            "schema_version": "0.4",
             "run_id": result.run_id,
             "incident_id": result.incident_id,
             "service": result.service,
@@ -298,6 +326,10 @@ def diagnose(
             "state": result.state.value,
             "stop_reason": result.stop_reason.value,
             "budget_usage": result.budget_usage,
+            "artifacts": [
+                record.model_dump(mode="json")
+                for record in result.artifacts
+            ],
             "hypothesis_count": len(result.hypotheses),
             "assessment_count": len(result.assessments),
             "remediation_count": len(result.remediation_actions),
@@ -340,6 +372,9 @@ def diagnose(
             "stop_reason": result.stop_reason.value,
             "evidence_count": len(result.evidence),
             "tool_calls": len(result.tool_calls),
+            "artifact_count": len(report.artifacts),
+            "artifact_kinds": artifact_kinds,
+            "jvm_evidence_count": jvm_evidence_count,
             "hypothesis_count": len(report.hypotheses),
             "top_hypothesis": (
                 top_hypothesis.model_dump() if top_hypothesis else None
@@ -369,6 +404,12 @@ def diagnose(
             f"Tool calls: {len(result.tool_calls)} | "
             f"Remediation: {len(report.remediation_plan)}"
         )
+        if report.artifacts:
+            console.print(
+                f"Snapshots: {len(report.artifacts)} "
+                f"({', '.join(artifact_kinds)})"
+            )
+            console.print(f"JVM evidence: {jvm_evidence_count}")
         console.print(
             f"Verification: {report.verification.environment}"
         )
@@ -381,7 +422,7 @@ def diagnose(
             f"{usage.input_tokens}/{usage.output_tokens}/{usage.total_tokens} "
             f"latency={usage.latency_ms}ms"
         )
-        console.print(
+        validation_line = (
             "Validation: "
             f"citations={report.validation.citations_valid}, "
             f"evidence_ids={report.validation.evidence_ids_valid}, "
@@ -390,6 +431,13 @@ def diagnose(
             f"verification={report.validation.verification_labeled}, "
             f"status={report.validation.status_consistent}"
         )
+        if report.artifacts:
+            validation_line += (
+                f", artifact_citations="
+                f"{report.validation.artifact_citations_valid}, "
+                f"artifacts_labeled={report.validation.artifacts_labeled}"
+            )
+        console.print(validation_line)
         console.print(f"Report: {report_path}")
         console.print(f"Run dir: {run_dir}")
 

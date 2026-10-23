@@ -10,6 +10,22 @@
 
 {{ report.summary }}
 
+{% if report.artifacts %}
+## JVM 快照
+
+> 以下为用户提供的时间点文本快照，不是 live attach 或实时采集。
+
+{% for artifact in report.artifacts %}
+- `{{ artifact.artifact_id }}` kind={{ artifact.kind }} file={{ artifact.source_name }} lines={{ artifact.line_count }} truncated={{ artifact.truncated }} environment={{ artifact.source_environment }}
+{% if artifact.warnings %}
+  - warnings:
+{% for warning in artifact.warnings %}
+    - {{ warning }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
 ## 鉴别诊断
 
 > `ranking_score` 是排序分，不是概率。
@@ -94,7 +110,16 @@
 {% set code_sources = report.sources | selectattr('kind', 'in', ['stack_frame', 'source_code', 'call_path', 'annotation', 'config']) | list %}
 {% set sql_sources = report.sources | selectattr('kind', 'equalto', 'sql') | list %}
 {% set db_sources = report.sources | selectattr('kind', 'in', ['db_row', 'db_schema']) | list %}
+{% set artifact_sources = report.sources | selectattr('category', 'equalto', 'artifact') | list %}
 
+{% if artifact_sources %}
+### JVM 快照证据
+
+{% for source in artifact_sources %}
+- [{{ 'verified' if source.verified else 'unverified' }}] [{{ source.kind }}] `{{ source.evidence_id }}` `{{ source.source_ref }}`：{{ source.claim }}
+{% endfor %}
+
+{% endif %}
 ### 同线程日志上下文
 
 {% if thread_sources %}
@@ -194,6 +219,8 @@
 ## 校验
 
 - citations_valid: {{ report.validation.citations_valid }}
+- artifact_citations_valid: {{ report.validation.artifact_citations_valid }}
+- artifacts_labeled: {{ report.validation.artifacts_labeled }}
 - evidence_ids_valid: {{ report.validation.evidence_ids_valid }}
 - hypotheses_valid: {{ report.validation.hypotheses_valid }}
 - remediation_grounded: {{ report.validation.remediation_grounded }}

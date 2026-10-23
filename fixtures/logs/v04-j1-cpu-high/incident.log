@@ -1,0 +1,8 @@
+2026-10-23 10:14:59.812 DEBUG [http-nio-8080-exec-3] c.e.pay.PaymentNotifier - webhook ack orderId=10086
+2026-10-23 10:14:59.900 INFO  [http-nio-8080-exec-7] c.e.pricing.PricingController - quote request orderId=10086
+2026-10-23 10:15:02.115 WARN  [http-nio-8080-exec-7] c.e.pricing.PricingController - quote latency 2215ms exceeds threshold
+2026-10-23 10:15:02.116 ERROR [http-nio-8080-exec-7] c.e.pricing.PricingController - quote request failed with timeout
+java.lang.RuntimeException: quote timed out for orderId=10086
+    at com.example.pricing.PricingService.recalculate(PricingService.java:12)
+    at com.example.pricing.PricingController.quote(PricingController.java:16)
+    at java.base/java.lang.Thread.run(Thread.java:840)

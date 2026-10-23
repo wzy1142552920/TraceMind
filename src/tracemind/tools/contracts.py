@@ -14,6 +14,7 @@ from tracemind.core.models import ParsedLog
 from tracemind.indexing.java_index import JavaIndex
 
 if TYPE_CHECKING:
+    from tracemind.artifacts import ArtifactBundle
     from tracemind.diagnosis.workspace import DiagnosisWorkspace
     from tracemind.verification import ReadOnlyVerificationBackend
 
@@ -106,6 +107,7 @@ class ToolContext:
     log_root: Path | None = None
     workspace: DiagnosisWorkspace | None = None
     verification_backend: ReadOnlyVerificationBackend | None = None
+    artifacts: ArtifactBundle | None = None
 
 
 ToolHandler = Callable[[ToolContext, BaseModel], ToolHandlerResult]

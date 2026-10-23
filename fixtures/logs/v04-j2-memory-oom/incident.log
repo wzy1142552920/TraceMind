@@ -1,0 +1,10 @@
+2026-10-23 11:02:40.910 INFO  [http-nio-8080-exec-2] c.e.report.ReportController - load report reportId=2026-10-22
+2026-10-23 11:02:41.005 WARN  [http-nio-8080-exec-2] c.e.report.ReportCache - cache size exceeds alert threshold size=184000
+2026-10-23 11:02:43.870 ERROR [http-nio-8080-exec-2] c.e.report.ReportController - report load failed
+java.lang.OutOfMemoryError: Java heap space
+    at java.base/java.util.concurrent.ConcurrentHashMap.putVal(ConcurrentHashMap.java:1011)
+    at java.base/java.util.concurrent.ConcurrentHashMap.put(ConcurrentHashMap.java:1006)
+    at com.example.report.ReportCache.get(ReportCache.java:18)
+    at com.example.report.ReportService.getReport(ReportService.java:8)
+    at com.example.report.ReportController.load(ReportController.java:16)
+    at java.base/java.lang.Thread.run(Thread.java:840)

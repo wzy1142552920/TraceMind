@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "service": "order-service",
+  "instance": "order-service-1",
+  "captured_at": "2026-10-23T11:02:45+08:00",
+  "artifacts": [
+    {"id": "gc-log", "kind": "gc_log", "path": "gc.log"},
+    {"id": "heap-histo", "kind": "heap_histogram", "path": "heap-histo.txt"}
+  ]
+}

@@ -16,20 +16,27 @@ from tracemind.diagnosis.evidence import (
     RequirementEvaluation,
 )
 
-LOG_KINDS = frozenset(
+SYMPTOM_KINDS = frozenset(
     {
         EvidenceKind.LOG_EVENT,
         EvidenceKind.LOG_THREAD_CONTEXT,
         EvidenceKind.STACK_FRAME,
+        EvidenceKind.THREAD_DUMP,
+        EvidenceKind.THREAD_CPU,
+        EvidenceKind.GC_EVENT,
+        EvidenceKind.GC_SUMMARY,
+        EvidenceKind.HEAP_SUMMARY,
+        EvidenceKind.DB_ROW,
     }
 )
-CODE_KINDS = frozenset(
+MECHANISM_KINDS = frozenset(
     {
         EvidenceKind.SOURCE_CODE,
         EvidenceKind.CALL_PATH,
         EvidenceKind.SQL,
         EvidenceKind.ANNOTATION,
         EvidenceKind.CONFIG,
+        EvidenceKind.DB_SCHEMA,
     }
 )
 
@@ -176,8 +183,12 @@ def _evaluate_hypothesis(
         if evidence_by_id[evidence_id].tool_call_id is not None
     ]
     supported_evidence = [evidence_by_id[item] for item in supporting_ids]
-    log_coverage = any(item.kind in LOG_KINDS for item in supported_evidence)
-    code_coverage = any(item.kind in CODE_KINDS for item in supported_evidence)
+    symptom_coverage = any(
+        item.kind in SYMPTOM_KINDS for item in supported_evidence
+    )
+    mechanism_coverage = any(
+        item.kind in MECHANISM_KINDS for item in supported_evidence
+    )
     tool_coverage = bool(tool_ids)
     context_ok = _context_gate(
         supported_evidence,
@@ -202,10 +213,16 @@ def _evaluate_hypothesis(
         reasons.append("at least one requirement was refuted")
     if not tool_coverage:
         reasons.append("no assessed evidence was read through a tool")
-    if not log_coverage:
-        reasons.append("no log evidence was assessed as supporting")
-    if not code_coverage:
-        reasons.append("no code evidence was assessed as supporting")
+    if not symptom_coverage:
+        reasons.append(
+            "missing_symptom_evidence: no symptom evidence was assessed "
+            "as supporting"
+        )
+    if not mechanism_coverage:
+        reasons.append(
+            "missing_mechanism_evidence: no code/config/DB mechanism "
+            "evidence was assessed as supporting"
+        )
     if require_log_thread_context and not context_ok:
         reasons.append("same-thread log context is missing or mismatched")
 
@@ -215,8 +232,8 @@ def _evaluate_hypothesis(
         and satisfied_discriminating > 0
         and not refuting_ids
         and tool_coverage
-        and log_coverage
-        and code_coverage
+        and symptom_coverage
+        and mechanism_coverage
         and context_ok
     )
 

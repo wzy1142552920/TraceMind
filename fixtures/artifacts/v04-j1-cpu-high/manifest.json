@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "service": "order-service",
+  "instance": "order-service-1",
+  "captured_at": "2026-10-23T10:15:00+08:00",
+  "artifacts": [
+    {"id": "thread-dump", "kind": "thread_dump", "path": "thread-dump.txt"},
+    {"id": "thread-cpu", "kind": "thread_cpu", "path": "thread-cpu.txt"},
+    {"id": "gc-log", "kind": "gc_log", "path": "gc.log"}
+  ]
+}

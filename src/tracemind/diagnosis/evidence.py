@@ -7,6 +7,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from tracemind.artifacts.models import ArtifactRecord
 from tracemind.diagnosis.state import RuntimeEvent, RuntimeState, StopReason
 
 
@@ -23,6 +24,11 @@ class EvidenceKind(StrEnum):
     CONFIG = "config"
     DB_ROW = "db_row"
     DB_SCHEMA = "db_schema"
+    THREAD_DUMP = "thread_dump"
+    THREAD_CPU = "thread_cpu"
+    GC_EVENT = "gc_event"
+    GC_SUMMARY = "gc_summary"
+    HEAP_SUMMARY = "heap_summary"
 
 
 class EvidenceProvenance(StrEnum):
@@ -32,6 +38,7 @@ class EvidenceProvenance(StrEnum):
     AST_INDEX = "ast_index"
     TOOL = "tool"
     FAKE_VERIFICATION = "fake_verification"
+    USER_ARTIFACT = "user_artifact"
 
 
 class HypothesisStatus(StrEnum):
@@ -329,6 +336,7 @@ class RunResult(BaseModel):
         default_factory=list
     )
     verification_environment: str | None = None
+    artifacts: list[ArtifactRecord] = Field(default_factory=list)
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     llm_calls: list[LLMCallRecord] = Field(default_factory=list)
     llm_usage: LLMUsageSummary = Field(default_factory=LLMUsageSummary)

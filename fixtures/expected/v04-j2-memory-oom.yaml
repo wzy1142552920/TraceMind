@@ -1,0 +1,63 @@
+case_id: v04-j2-memory-oom
+symptom: "java.lang.OutOfMemoryError while loading and caching reports"
+expected_top_cause_keywords:
+  - unbounded
+  - static cache
+  - no eviction
+  - retains every
+  - report cache
+expected_thread: http-nio-8080-exec-2
+expected_thread_context_messages:
+  - "load report reportId=2026-10-22"
+  - "cache size exceeds alert threshold size=184000"
+  - "report load failed"
+forbidden_thread_context_markers:
+  - PaymentNotifier
+expected_evidence_kinds:
+  - gc_summary
+  - heap_summary
+  - source_code
+  - log_thread_context
+expected_evidence_refs:
+  - "artifact://gc-log#L1-L4"
+  - "artifact://heap-histo#L1-L9"
+  - "repo://src/main/java/com/example/report/ReportCache.java#L12-L20"
+expected_refutations:
+  - hypothesis_keywords:
+      - undersized
+    refs:
+      - "artifact://gc-log#L4"
+  - hypothesis_keywords:
+      - oversized
+      - single
+    refs:
+      - "artifact://heap-histo#L1-L9"
+expected_artifacts:
+  - artifact_id: gc-log
+    kind: gc_log
+    source_name: gc.log
+    line_count: 4
+  - artifact_id: heap-histo
+    kind: heap_histogram
+    source_name: heap-histo.txt
+    line_count: 9
+expected_status: confirmed
+expected_hypothesis_status: confirmed
+expected_remediation_types:
+  - code
+  - test
+expected_remediation_target_keywords:
+  - ReportCache
+expected_remediation_evidence_refs:
+  - "artifact://gc-log#L1-L4"
+  - "artifact://heap-histo#L1-L9"
+  - "repo://src/main/java/com/example/report/ReportCache.java#L12-L20"
+expected_jvm_tools:
+  - jvm.get_gc_summary
+  - jvm.get_heap_histogram
+  - jvm.get_gc_events
+forbidden_tool_calls:
+  - db.get_row
+  - shell.execute
+  - jvm.attach
+notes: "静态无界缓存导致 Full GC 后存活堆仍高；堆过小、单次大对象假设被快照证伪。"

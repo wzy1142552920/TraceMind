@@ -71,7 +71,7 @@ def test_happy_path_cli_and_repeat_run(tmp_path: Path) -> None:
     } <= {path.name for path in run_dir.iterdir()}
 
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
-    assert report["schema_version"] == "0.3"
+    assert report["schema_version"] == "0.4"
     assert report["status"] == "confirmed"
     assert report["validation"]["citations_valid"] is True
     assert report["validation"]["evidence_ids_valid"] is True
@@ -91,7 +91,7 @@ def test_happy_path_cli_and_repeat_run(tmp_path: Path) -> None:
 
     run_text = (run_dir / "run.json").read_text(encoding="utf-8")
     run_data = json.loads(run_text)
-    assert run_data["schema_version"] == "0.3"
+    assert run_data["schema_version"] == "0.4"
     assert run_data["llm_usage"]["calls"] == 3
     assert run_data["llm_calls"]
     assert run_data["hypothesis_count"] == 2

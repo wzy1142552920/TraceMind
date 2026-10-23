@@ -1,0 +1,69 @@
+case_id: v04-j1-cpu-high
+symptom: "quote request timed out while one pricing thread burned CPU"
+expected_top_cause_keywords:
+  - hot pricing loop
+  - hot loop
+  - cpu saturation
+  - recalculate
+  - high cpu
+expected_thread: http-nio-8080-exec-7
+expected_thread_context_messages:
+  - "quote request orderId=10086"
+  - "quote latency 2215ms exceeds threshold"
+  - "quote request failed with timeout"
+forbidden_thread_context_markers:
+  - PaymentNotifier
+  - webhook ack
+expected_evidence_kinds:
+  - thread_cpu
+  - thread_dump
+  - source_code
+  - log_thread_context
+expected_evidence_refs:
+  - "artifact://thread-cpu#L4"
+  - "artifact://thread-dump#L4-L8"
+  - "repo://src/main/java/com/example/pricing/PricingService.java#L9-L15"
+expected_refutations:
+  - hypothesis_keywords:
+      - GC pauses
+    refs:
+      - "artifact://gc-log#L1-L2"
+  - hypothesis_keywords:
+      - lock contention
+      - deadlock
+    refs:
+      - "artifact://thread-dump#L10-L14"
+expected_artifacts:
+  - artifact_id: thread-dump
+    kind: thread_dump
+    source_name: thread-dump.txt
+    line_count: 18
+  - artifact_id: thread-cpu
+    kind: thread_cpu
+    source_name: thread-cpu.txt
+    line_count: 6
+  - artifact_id: gc-log
+    kind: gc_log
+    source_name: gc.log
+    line_count: 2
+expected_status: confirmed
+expected_hypothesis_status: confirmed
+expected_remediation_types:
+  - code
+  - test
+expected_remediation_target_keywords:
+  - PricingService
+expected_remediation_evidence_refs:
+  - "artifact://thread-cpu#L4"
+  - "artifact://thread-dump#L4-L8"
+  - "repo://src/main/java/com/example/pricing/PricingService.java#L9-L15"
+expected_jvm_tools:
+  - jvm.get_hot_threads
+  - jvm.get_thread_dump
+  - jvm.get_deadlocks
+  - jvm.get_gc_summary
+forbidden_tool_calls:
+  - db.get_row
+  - shell.execute
+  - jvm.attach
+notes: "热点业务线程在 PricingService.recalculate；GC 正常且无死锁，用于排除替代假设。"

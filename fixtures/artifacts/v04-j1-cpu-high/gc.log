@@ -1,0 +1,2 @@
+[10:14:50.000][info][gc] GC(101) Pause Young (Normal) 128M->96M(1024M) 8.112ms
+[10:14:55.000][info][gc] GC(102) Pause Young (Normal) 140M->104M(1024M) 9.345ms

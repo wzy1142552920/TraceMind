@@ -1,0 +1,330 @@
+{
+  "responses": [
+    {
+      "content": "I will investigate the heap failure with GC, heap, cache source, and log evidence.",
+      "tool_calls": [
+        {
+          "id": "call_h1",
+          "name": "diagnosis_propose_hypothesis",
+          "arguments": {
+            "statement": "An unbounded static cache in ReportCache retains every ReportEntry until the heap is exhausted.",
+            "cause_chain": [
+              "ReportController.load serves each report through ReportService.getReport.",
+              "ReportCache.get inserts every loaded report into a static ConcurrentHashMap.",
+              "The map has no eviction or size bound, so live data grows until java.lang.OutOfMemoryError."
+            ],
+            "basis_evidence_ids": [
+              "ev_0001",
+              "ev_0002",
+              "ev_0004"
+            ],
+            "requirements": [
+              {
+                "description": "The GC log shows repeated Full GCs that cannot recover the heap.",
+                "evidence_kinds": [
+                  "gc_summary"
+                ],
+                "discriminating": true,
+                "suggested_tools": [
+                  "jvm.get_gc_summary",
+                  "jvm.get_gc_events"
+                ]
+              },
+              {
+                "description": "The live heap histogram is dominated by cached report objects.",
+                "evidence_kinds": [
+                  "heap_summary"
+                ],
+                "discriminating": true,
+                "suggested_tools": [
+                  "jvm.get_heap_histogram"
+                ]
+              },
+              {
+                "description": "The indexed source shows an unbounded static cache insertion.",
+                "evidence_kinds": [
+                  "source_code"
+                ],
+                "discriminating": false,
+                "suggested_tools": [
+                  "code.find_symbol",
+                  "code.get_source_range"
+                ]
+              },
+              {
+                "description": "Same-thread log context shows the report load followed by the heap failure.",
+                "evidence_kinds": [
+                  "log_thread_context"
+                ],
+                "discriminating": false,
+                "suggested_tools": [
+                  "logs.get_thread_context"
+                ]
+              }
+            ],
+            "falsifiers": [
+              "Surviving heap is small and the dominant class is unrelated to the cache.",
+              "Full GCs recover most of the heap after each collection."
+            ]
+          }
+        },
+        {
+          "id": "call_h2",
+          "name": "diagnosis_propose_hypothesis",
+          "arguments": {
+            "statement": "The 2 GiB heap is undersized for the report workload.",
+            "cause_chain": [
+              "The workload serves more concurrent reports than the configured heap can hold.",
+              "Available heap is exhausted during a burst.",
+              "The process fails with java.lang.OutOfMemoryError even though objects are later reclaimable."
+            ],
+            "basis_evidence_ids": [
+              "ev_0001",
+              "ev_0003"
+            ],
+            "requirements": [
+              {
+                "description": "Full GC events show the heap recovering substantially after collection.",
+                "evidence_kinds": [
+                  "gc_event"
+                ],
+                "discriminating": true,
+                "suggested_tools": [
+                  "jvm.get_gc_events"
+                ]
+              }
+            ],
+            "falsifiers": [
+              "Most of the heap remains live after Full GC, indicating retained objects."
+            ]
+          }
+        },
+        {
+          "id": "call_h3",
+          "name": "diagnosis_propose_hypothesis",
+          "arguments": {
+            "statement": "A single oversized report payload triggers the allocation failure.",
+            "cause_chain": [
+              "One request loads an unusually large report.",
+              "The allocation cannot fit in the remaining heap.",
+              "The request thread fails with java.lang.OutOfMemoryError."
+            ],
+            "basis_evidence_ids": [
+              "ev_0001",
+              "ev_0003"
+            ],
+            "requirements": [
+              {
+                "description": "The heap histogram shows one class or one huge allocation dominating the heap.",
+                "evidence_kinds": [
+                  "heap_summary"
+                ],
+                "discriminating": true,
+                "suggested_tools": [
+                  "jvm.get_heap_histogram"
+                ]
+              }
+            ],
+            "falsifiers": [
+              "The heap is dominated by many small cached instances rather than one large object."
+            ]
+          }
+        },
+        {
+          "id": "call_gc_summary",
+          "name": "jvm_get_gc_summary",
+          "arguments": {
+            "hypothesis_id": "hyp_001",
+            "requirement_id": "hyp_001_req_01"
+          }
+        },
+        {
+          "id": "call_heap",
+          "name": "jvm_get_heap_histogram",
+          "arguments": {
+            "limit": 10,
+            "hypothesis_id": "hyp_001",
+            "requirement_id": "hyp_001_req_02"
+          }
+        },
+        {
+          "id": "call_symbol",
+          "name": "code_find_symbol",
+          "arguments": {
+            "query": "ReportCache.get",
+            "hypothesis_id": "hyp_001",
+            "requirement_id": "hyp_001_req_03"
+          }
+        },
+        {
+          "id": "call_source",
+          "name": "code_get_source_range",
+          "arguments": {
+            "file_path": "src/main/java/com/example/report/ReportCache.java",
+            "start_line": 12,
+            "end_line": 20,
+            "hypothesis_id": "hyp_001",
+            "requirement_id": "hyp_001_req_03"
+          }
+        },
+        {
+          "id": "call_ctx",
+          "name": "logs_get_thread_context",
+          "arguments": {
+            "event_id": "evt_0003",
+            "before": 3,
+            "after": 3,
+            "hypothesis_id": "hyp_001",
+            "requirement_id": "hyp_001_req_04"
+          }
+        },
+        {
+          "id": "call_gc_events",
+          "name": "jvm_get_gc_events",
+          "arguments": {
+            "limit": 10,
+            "full_only": true,
+            "hypothesis_id": "hyp_002",
+            "requirement_id": "hyp_002_req_01"
+          }
+        }
+      ],
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 180,
+        "output_tokens": 80
+      }
+    },
+    {
+      "content": "I will assess the GC, heap, source, and log evidence for the cache hypothesis.",
+      "tool_calls": [
+        {
+          "id": "call_assess_1",
+          "name": "diagnosis_assess_evidence",
+          "arguments": {
+            "assessments": [
+              {
+                "hypothesis_id": "hyp_001",
+                "requirement_id": "hyp_001_req_01",
+                "source_ref": "artifact://gc-log#L1-L4",
+                "verdict": "supports",
+                "rationale": "Four Full GCs in fifteen seconds reclaim only 47 MB at the end and leave about 1.9 GB live."
+              },
+              {
+                "hypothesis_id": "hyp_001",
+                "requirement_id": "hyp_001_req_02",
+                "source_ref": "artifact://heap-histo#L1-L9",
+                "verdict": "supports",
+                "rationale": "ReportEntry dominates live bytes with 1,150,000 instances, and ConcurrentHashMap$Node is the third-largest class."
+              },
+              {
+                "hypothesis_id": "hyp_001",
+                "requirement_id": "hyp_001_req_03",
+                "source_ref": "repo://src/main/java/com/example/report/ReportCache.java#L12-L20",
+                "verdict": "supports",
+                "rationale": "The static CACHE map receives every loaded report with no eviction, TTL, or size limit."
+              },
+              {
+                "hypothesis_id": "hyp_001",
+                "requirement_id": "hyp_001_req_04",
+                "evidence_id": "ev_0002",
+                "verdict": "supports",
+                "rationale": "The same request thread logs report load, cache-size warning, and the heap failure in order."
+              }
+            ]
+          }
+        }
+      ],
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 180,
+        "output_tokens": 70
+      }
+    },
+    {
+      "content": "I will assess the undersized-heap and single-large-object alternatives.",
+      "tool_calls": [
+        {
+          "id": "call_assess_2",
+          "name": "diagnosis_assess_evidence",
+          "arguments": {
+            "assessments": [
+              {
+                "hypothesis_id": "hyp_002",
+                "requirement_id": "hyp_002_req_01",
+                "source_ref": "artifact://gc-log#L4",
+                "verdict": "refutes",
+                "rationale": "The final Full GC reclaims only 47 MB and leaves roughly 1.9 GB live, so the failure is retained data rather than a temporarily undersized heap."
+              },
+              {
+                "hypothesis_id": "hyp_003",
+                "requirement_id": "hyp_003_req_01",
+                "source_ref": "artifact://heap-histo#L1-L9",
+                "verdict": "refutes",
+                "rationale": "The dominant class is 1,150,000 small ReportEntry instances, not a single oversized allocation."
+              }
+            ]
+          }
+        }
+      ],
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 180,
+        "output_tokens": 60
+      }
+    },
+    {
+      "content": "The unbounded cache hypothesis is confirmed. I will propose grounded remediation.",
+      "tool_calls": [
+        {
+          "id": "call_remediation",
+          "name": "diagnosis_propose_remediation",
+          "arguments": {
+            "actions": [
+              {
+                "hypothesis_id": "hyp_001",
+                "type": "code",
+                "title": "Bound the report cache with eviction and TTL",
+                "description": "Replace the unbounded static ConcurrentHashMap in ReportCache with a bounded cache such as Caffeine with a maximum weight or entry count and an expiry policy. Ensure the cache is shared safely and metrics expose size and eviction counts.",
+                "evidence_source_refs": [
+                  "artifact://gc-log#L1-L4",
+                  "artifact://heap-histo#L1-L9",
+                  "repo://src/main/java/com/example/report/ReportCache.java#L12-L20"
+                ],
+                "target": "src/main/java/com/example/report/ReportCache.java",
+                "risk": "Excess eviction can increase report load latency and database pressure.",
+                "prerequisites": [
+                  "Measure report cache hit ratio and service heap budget"
+                ],
+                "verification_steps": [
+                  "Replay the report workload under load and confirm heap stays below budget",
+                  "Check cache hit ratio and p99 latency after enabling eviction"
+                ]
+              },
+              {
+                "hypothesis_id": "hyp_001",
+                "type": "test",
+                "title": "Add a cache-bound regression test",
+                "description": "Add a test that inserts more reports than the configured bound and asserts the cache size never exceeds it and evicted entries are reloaded.",
+                "evidence_source_refs": [
+                  "artifact://heap-histo#L1-L9"
+                ],
+                "target": "Add a ReportCache bound regression test",
+                "risk": "None; test-only change.",
+                "prerequisites": [],
+                "verification_steps": [
+                  "Run the cache test in CI with a fixed entry limit"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 180,
+        "output_tokens": 60
+      }
+    }
+  ]
+}

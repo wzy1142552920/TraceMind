@@ -14,6 +14,7 @@ _RUNTIME_DIRS = (
     _SRC / "indexing",
     _SRC / "log_analysis",
     _SRC / "verification",
+    _SRC / "artifacts",
 )
 _FORBIDDEN_TOKENS = (
     "v03-c1",
@@ -34,6 +35,26 @@ _FORBIDDEN_TOKENS = (
     "默认方法",
     "retry probe",
     "fixtures/",
+    "v04-j1",
+    "v04-j2",
+    "v04-jvm",
+    "cpu-high",
+    "memory-oom",
+    "PricingService",
+    "PricingController",
+    "pricing-exec-1",
+    "recalculate",
+    "ReportCache",
+    "ReportService",
+    "ReportController",
+    "ReportEntry",
+    "unbounded-cache",
+    "184000",
+    "1150000",
+    "966000000",
+    "expected_jvm_tools",
+    "expected_refutations",
+    "expected_artifacts",
 )
 
 
@@ -93,5 +114,6 @@ def test_scan_covers_the_runtime_packages() -> None:
         "indexing",
         "log_analysis",
         "verification",
+        "artifacts",
     }
     assert len(_runtime_files()) >= 20

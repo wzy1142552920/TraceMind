@@ -1,4 +1,4 @@
-"""Unit tests for report generation and status mapping for schema 0.3."""
+"""Unit tests for report generation and status mapping for schema 0.4."""
 
 from __future__ import annotations
 
@@ -154,7 +154,7 @@ def test_build_confirmed_report() -> None:
     parsed = LogParser().parse(LOG_FIXTURE)
     report = build_report(_result(), parsed, REPO_FIXTURE)
 
-    assert report.schema_version == "0.3"
+    assert report.schema_version == "0.4"
     assert report.status == "confirmed"
     assert report.incident_id == "inc_test"
     assert report.run_id == "run_test"
@@ -186,7 +186,7 @@ def test_report_json_and_markdown() -> None:
     report = build_report(_result(), parsed, REPO_FIXTURE)
 
     data = json.loads(report.model_dump_json())
-    assert data["schema_version"] == "0.3"
+    assert data["schema_version"] == "0.4"
     assert "root_causes" not in data
     assert data["validation"]["hypotheses_valid"] is True
 
